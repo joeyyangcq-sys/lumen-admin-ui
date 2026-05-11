@@ -1,1 +1,0 @@
-{"root":["./e2e/01-overview.spec.ts","./e2e/02-resource-crud.spec.ts","./e2e/03-bundle-import.spec.ts","./e2e/04-history-rollback.spec.ts","./e2e/05-export.spec.ts","./e2e/env.ts","./e2e/fixtures.ts","./e2e/gateway-client.ts","./e2e/global-setup.ts","./e2e/global-teardown.ts","./playwright.config.ts"],"errors":true,"version":"5.9.3"}

@@ -32,12 +32,28 @@ interface RespTransState {
   enabled: boolean; status: number; body: string; content_type: string;
   add_headers: KV[]; set_headers: KV[]; remove_headers: string[];
 }
+
+// Custom / external plugin — name + raw JSON params
+interface CustomPluginState {
+  name: string;
+  enabled: boolean;
+  params: string; // JSON string, may be "{}" or "null"
+}
+
 interface PluginsState {
   request_id: RequestIdState; limit_count: LimitCountState;
   replace_path: ReplacePathState; strip_prefix: StripPrefixState; add_prefix: AddPrefixState;
   rewrite_path_regex: RewriteRegexState; request_transformer: ReqTransState;
   response_transformer: RespTransState;
+  // Any plugin not matched by a built-in form ends up here
+  custom: CustomPluginState[];
 }
+
+// Keys reserved by built-in plugin forms — anything else → custom
+const BUILTIN_PLUGIN_KEYS = new Set([
+  "request_id", "limit_count", "replace_path", "strip_prefix", "add_prefix",
+  "rewrite_path_regex", "request_transformer", "response_transformer",
+]);
 
 type UriMatchMode = "exact" | "prefix" | "regex";
 
@@ -66,6 +82,7 @@ const DEFAULT_PLUGINS: PluginsState = {
   rewrite_path_regex:  { enabled: false, rules: [{ pattern: "", replacement: "" }] },
   request_transformer: { enabled: false, method: "", host: "", add_headers: [], set_headers: [], remove_headers: [], add_query: [], set_query: [], remove_query: [] },
   response_transformer:{ enabled: false, status: 0, body: "", content_type: "", add_headers: [], set_headers: [], remove_headers: [] },
+  custom:              [],
 };
 const DEFAULT_ROUTE: RouteState    = { id: "", uri: "/", uri_match: "exact", methods: ["GET"], service_id: "", status: 1, priority: 0, plugins: DEFAULT_PLUGINS };
 const DEFAULT_SERVICE: ServiceState = { id: "", upstream_id: "", plugins: DEFAULT_PLUGINS };
@@ -98,6 +115,15 @@ function pluginsToJson(p: PluginsState): Record<string, unknown> {
       set: { headers: Object.fromEntries(r.set_headers.map(kv => [kv.key, kv.value])) },
       remove: { headers: r.remove_headers.filter(Boolean) },
     };
+  }
+  // Custom / external plugins
+  for (const cp of p.custom) {
+    if (!cp.enabled || !cp.name.trim()) continue;
+    try {
+      out[cp.name.trim()] = JSON.parse(cp.params || "{}");
+    } catch {
+      out[cp.name.trim()] = {};
+    }
   }
   return out;
 }
@@ -191,6 +217,14 @@ function jsonToPlugins(raw: Record<string, unknown>): PluginsState {
     const remove = (r.remove ?? {}) as Record<string, string[]>;
     p.response_transformer = { enabled: true, status: Number(r.status ?? 0), body: String(r.body ?? ""), content_type: String(r.content_type ?? ""), add_headers: toKVList(add.headers ?? {}), set_headers: toKVList(set.headers ?? {}), remove_headers: remove.headers ?? [] };
   }
+  // Any key not handled by a built-in form → custom plugin
+  p.custom = Object.entries(pl)
+    .filter(([key]) => !BUILTIN_PLUGIN_KEYS.has(key))
+    .map(([name, params]) => ({
+      name,
+      enabled: true,
+      params: JSON.stringify(params, null, 2),
+    }));
   return p;
 }
 
@@ -304,6 +338,92 @@ function TagListEditor({ items, onChange, placeholder }: { items: string[]; onCh
   );
 }
 
+// ─── custom / external plugin section ─────────────────────────────────────
+
+function CustomPluginsSection({ plugins, onChange }: { plugins: CustomPluginState[]; onChange: (v: CustomPluginState[]) => void }) {
+  const [openIdx, setOpenIdx] = useState<number | null>(null);
+
+  const add = () => {
+    const next = [...plugins, { name: "", enabled: true, params: "{}" }];
+    onChange(next);
+    setOpenIdx(next.length - 1);
+  };
+
+  const del = (i: number) => {
+    onChange(plugins.filter((_, idx) => idx !== i));
+    setOpenIdx(prev => (prev === i ? null : prev !== null && prev > i ? prev - 1 : prev));
+  };
+
+  const patch = (i: number, partial: Partial<CustomPluginState>) =>
+    onChange(plugins.map((p, idx) => (idx === i ? { ...p, ...partial } : p)));
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between">
+        <span className="text-xs font-medium text-fg">自定义 / 外部插件</span>
+        <button onClick={add} className="flex items-center gap-1 text-[11px] text-accent hover:underline">
+          <Plus className="h-3 w-3" />添加插件
+        </button>
+      </div>
+
+      {plugins.length === 0 && (
+        <div className="rounded border border-dashed border-border py-4 text-center text-[11px] text-fg-subtle">
+          暂无自定义插件。点击「添加插件」注册外部插件。
+        </div>
+      )}
+
+      {plugins.map((cp, i) => {
+        const isOpen = openIdx === i;
+        const hasName = cp.name.trim() !== "";
+        return (
+          <div key={i} className="rounded border border-border overflow-hidden">
+            {/* header row */}
+            <div className="flex items-center gap-2 bg-bg-subtle px-3 py-2">
+              <Toggle checked={cp.enabled} onChange={v => patch(i, { enabled: v })} />
+              <input
+                value={cp.name}
+                onChange={e => patch(i, { name: e.target.value })}
+                placeholder="插件名称（如 my-auth）"
+                className="h-6 flex-1 rounded border border-border bg-bg px-2 text-xs text-fg outline-none focus:border-accent"
+              />
+              <button
+                onClick={() => setOpenIdx(isOpen ? null : i)}
+                className="text-fg-subtle hover:text-fg"
+                title={isOpen ? "收起" : "展开参数"}
+              >
+                {isOpen ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+              </button>
+              <button onClick={() => del(i)} className="text-fg-subtle hover:text-danger" title="删除">
+                <Trash2 className="h-3.5 w-3.5" />
+              </button>
+            </div>
+
+            {/* params editor */}
+            {isOpen && (
+              <div className="border-t border-border bg-bg p-3 space-y-1">
+                <div className="text-[11px] text-fg-subtle">
+                  插件参数（JSON）
+                  {!hasName && <span className="ml-1 text-danger">请先填写插件名称</span>}
+                </div>
+                <textarea
+                  value={cp.params}
+                  onChange={e => patch(i, { params: e.target.value })}
+                  placeholder="{}"
+                  spellCheck={false}
+                  className="h-28 w-full resize-y rounded border border-border bg-bg p-2 font-mono text-xs text-fg outline-none focus:border-accent"
+                />
+                <div className="text-[10px] text-fg-subtle">
+                  有效 JSON 对象，保存时无效 JSON 将被替换为 <code>{"{}"}</code>
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 const METHODS = ["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"];
 
 function MethodPicker({ value, onChange }: { value: string[]; onChange: (v: string[]) => void }) {
@@ -407,6 +527,20 @@ function PluginsPanel({ state, onChange }: { state: PluginsState; onChange: (s: 
         <Field label="覆盖响应头"><KVEditor items={state.response_transformer.set_headers} onChange={v => set("response_transformer", { ...state.response_transformer, set_headers: v })} keyPlaceholder="Header 名" valuePlaceholder="值" /></Field>
         <Field label="删除响应头"><TagListEditor items={state.response_transformer.remove_headers} onChange={v => set("response_transformer", { ...state.response_transformer, remove_headers: v })} placeholder="Header 名" /></Field>
       </PluginSection>
+
+      {/* Custom / external plugins */}
+      <div className="rounded border border-border overflow-hidden">
+        <div className="bg-bg-subtle px-3 py-2">
+          <div className="text-xs font-medium text-fg">外部插件</div>
+          <div className="text-[11px] text-fg-subtle">通过 lumen.WithPlugins 注册的自定义 / 第三方插件</div>
+        </div>
+        <div className="p-3 border-t border-border bg-bg">
+          <CustomPluginsSection
+            plugins={state.custom}
+            onChange={v => set("custom", v)}
+          />
+        </div>
+      </div>
     </div>
   );
 }
