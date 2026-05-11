@@ -24,3 +24,5 @@ pnpm-debug.log*
 
 # runtime config — environment-specific, never committed
 public/config.json
+*.tsbuildinfo
+*.tsbuildinfo
