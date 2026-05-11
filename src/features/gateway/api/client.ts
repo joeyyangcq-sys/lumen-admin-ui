@@ -44,6 +44,20 @@ export interface PluginCatalogEntry {
   scopes: string[];
 }
 
+export interface RouteStats {
+  route_id: string;
+  requests: number;
+  errors: number;
+}
+
+export interface GatewayStats {
+  requests_total: number;
+  errors_4xx: number;
+  errors_5xx: number;
+  error_rate: number; // 0–100 percent
+  top_routes: RouteStats[];
+}
+
 export interface GatewayApi {
   // ---- resource CRUD ----
   listResources<T = Record<string, unknown>>(
@@ -71,6 +85,7 @@ export interface GatewayApi {
   deleteResource(kind: GatewayResourceKind, id: string): Promise<DeleteResult>;
 
   // ---- control plane ----
+  getStats(): Promise<GatewayStats>;
   listPlugins(): Promise<PluginCatalogEntry[]>;
   getSchema(): Promise<GatewaySchemaResponse>;
   getHistory(limit?: number): Promise<GatewayHistoryListResponse>;
@@ -129,6 +144,9 @@ export function createGatewayApi(client: {
       return client.del(`${ADMIN}/${kind}/${encodeURIComponent(id)}`);
     },
 
+    getStats() {
+      return client.get<GatewayStats>(`${ADMIN}/control/stats`);
+    },
     listPlugins() {
       return client.get<PluginCatalogEntry[]>(`${ADMIN}/control/plugins`);
     },
