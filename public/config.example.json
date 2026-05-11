@@ -1,0 +1,34 @@
+{
+  "auth": {
+    "mode": "apikey",
+    "apiKey": "local-dev-admin-key"
+  },
+  "modules": {
+    "gateway": {
+      "enabled": true,
+      "baseUrl": "http://localhost:18080"
+    },
+    "oauth": {
+      "enabled": false,
+      "baseUrl": "http://localhost:9080"
+    },
+    "mcp": {
+      "enabled": false,
+      "baseUrl": "http://localhost:9280"
+    },
+    "monitoring": {
+      "enabled": true,
+      "baseUrl": "http://localhost:3000",
+      "orgId": 1,
+      "theme": "dark",
+      "kiosk": true,
+      "dashboards": {
+        "gateway": "lumen-gateway"
+      }
+    }
+  },
+  "ui": {
+    "theme": "system",
+    "defaultLanding": "/gateway"
+  }
+}

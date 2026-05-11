@@ -1,0 +1,20 @@
+services:
+
+  # ── admin-ui ─────────────────────────────────────────────────────────────
+  admin-ui:
+    build: .
+    image: lumen-admin-ui:local
+    restart: unless-stopped
+    ports:
+      - "5173:80"
+    volumes:
+      # Mount your runtime config — copy public/config.example.json to
+      # public/config.json and adjust the URLs before first run.
+      - ./public/config.json:/usr/share/nginx/html/config.json:ro
+    environment:
+      TZ: Asia/Shanghai
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost/health || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
