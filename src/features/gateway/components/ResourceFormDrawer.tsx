@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { ChevronDown, ChevronRight, Plus, Trash2 } from "lucide-react";
 import { Badge, Button, Card, CardBody, CardHeader } from "@shared/ui";
 import { isApiError } from "@core/api/errors";
+import { useGatewayApi, type PluginCatalogEntry } from "../api/client";
 
 export type FormDrawerMode = "view" | "create" | "edit";
 export type ResourceKindForm = "routes" | "services" | "upstreams";
@@ -340,13 +341,44 @@ function TagListEditor({ items, onChange, placeholder }: { items: string[]; onCh
 
 // ─── custom / external plugin section ─────────────────────────────────────
 
-function CustomPluginsSection({ plugins, onChange }: { plugins: CustomPluginState[]; onChange: (v: CustomPluginState[]) => void }) {
-  const [openIdx, setOpenIdx] = useState<number | null>(null);
+interface CustomPluginsSectionProps {
+  plugins: CustomPluginState[];
+  onChange: (v: CustomPluginState[]) => void;
+  /** Non-builtin plugins available in the gateway registry. */
+  catalog: PluginCatalogEntry[];
+}
 
-  const add = () => {
-    const next = [...plugins, { name: "", enabled: true, params: "{}" }];
+function CustomPluginsSection({ plugins, onChange, catalog }: CustomPluginsSectionProps) {
+  const [openIdx, setOpenIdx] = useState<number | null>(null);
+  // Names already added (to exclude from the "add" dropdown)
+  const addedNames = new Set(plugins.map(p => p.name));
+
+  // External catalog entries not yet added and not in built-in set
+  const available = catalog.filter(
+    e => !BUILTIN_PLUGIN_KEYS.has(e.name) && !addedNames.has(e.name),
+  );
+
+  // The currently-selected item in the "add" dropdown
+  const [selected, setSelected] = useState("");
+
+  const addFromCatalog = () => {
+    const name = selected.trim();
+    if (!name) return;
+    const next = [...plugins, { name, enabled: true, params: "{}" }];
     onChange(next);
     setOpenIdx(next.length - 1);
+    setSelected("");
+  };
+
+  // Fallback: manually enter a name not in the catalog
+  const [manualName, setManualName] = useState("");
+  const addManual = () => {
+    const name = manualName.trim();
+    if (!name || addedNames.has(name)) return;
+    const next = [...plugins, { name, enabled: true, params: "{}" }];
+    onChange(next);
+    setOpenIdx(next.length - 1);
+    setManualName("");
   };
 
   const del = (i: number) => {
@@ -359,52 +391,76 @@ function CustomPluginsSection({ plugins, onChange }: { plugins: CustomPluginStat
 
   return (
     <div className="space-y-2">
-      <div className="flex items-center justify-between">
-        <span className="text-xs font-medium text-fg">自定义 / 外部插件</span>
-        <button onClick={add} className="flex items-center gap-1 text-[11px] text-accent hover:underline">
-          <Plus className="h-3 w-3" />添加插件
-        </button>
-      </div>
+      {/* ── Add from catalog ── */}
+      {available.length > 0 ? (
+        <div className="flex items-center gap-1.5">
+          <select
+            value={selected}
+            onChange={e => setSelected(e.target.value)}
+            className="h-7 flex-1 rounded border border-border bg-bg px-2 text-xs text-fg outline-none focus:border-accent"
+          >
+            <option value="">— 选择外部插件 —</option>
+            {available.map(e => (
+              <option key={e.name} value={e.name}>{e.name}</option>
+            ))}
+          </select>
+          <button
+            onClick={addFromCatalog}
+            disabled={!selected}
+            className="flex items-center gap-1 rounded border border-accent px-2 py-1 text-[11px] text-accent hover:bg-accent hover:text-white disabled:opacity-40"
+          >
+            <Plus className="h-3 w-3" />添加
+          </button>
+        </div>
+      ) : (
+        /* No external plugins in catalog — show manual input as fallback */
+        <div className="flex items-center gap-1.5">
+          <input
+            value={manualName}
+            onChange={e => setManualName(e.target.value)}
+            onKeyDown={e => e.key === "Enter" && addManual()}
+            placeholder="输入外部插件名称（如 my-auth）"
+            className="h-7 flex-1 rounded border border-border bg-bg px-2 text-xs text-fg outline-none focus:border-accent"
+          />
+          <button
+            onClick={addManual}
+            disabled={!manualName.trim()}
+            className="flex items-center gap-1 rounded border border-accent px-2 py-1 text-[11px] text-accent hover:bg-accent hover:text-white disabled:opacity-40"
+          >
+            <Plus className="h-3 w-3" />添加
+          </button>
+        </div>
+      )}
 
       {plugins.length === 0 && (
-        <div className="rounded border border-dashed border-border py-4 text-center text-[11px] text-fg-subtle">
-          暂无自定义插件。点击「添加插件」注册外部插件。
+        <div className="rounded border border-dashed border-border py-3 text-center text-[11px] text-fg-subtle">
+          {available.length > 0
+            ? "从上方下拉框中选择外部插件后点击「添加」"
+            : "暂无通过 lumen.WithPlugins 注册的外部插件"}
         </div>
       )}
 
       {plugins.map((cp, i) => {
         const isOpen = openIdx === i;
-        const hasName = cp.name.trim() !== "";
         return (
           <div key={i} className="rounded border border-border overflow-hidden">
-            {/* header row */}
             <div className="flex items-center gap-2 bg-bg-subtle px-3 py-2">
               <Toggle checked={cp.enabled} onChange={v => patch(i, { enabled: v })} />
-              <input
-                value={cp.name}
-                onChange={e => patch(i, { name: e.target.value })}
-                placeholder="插件名称（如 my-auth）"
-                className="h-6 flex-1 rounded border border-border bg-bg px-2 text-xs text-fg outline-none focus:border-accent"
-              />
+              <span className="flex-1 text-xs font-mono text-fg">{cp.name}</span>
               <button
                 onClick={() => setOpenIdx(isOpen ? null : i)}
                 className="text-fg-subtle hover:text-fg"
-                title={isOpen ? "收起" : "展开参数"}
+                title={isOpen ? "收起参数" : "展开参数"}
               >
                 {isOpen ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
               </button>
-              <button onClick={() => del(i)} className="text-fg-subtle hover:text-danger" title="删除">
+              <button onClick={() => del(i)} className="text-fg-subtle hover:text-danger" title="移除">
                 <Trash2 className="h-3.5 w-3.5" />
               </button>
             </div>
-
-            {/* params editor */}
             {isOpen && (
               <div className="border-t border-border bg-bg p-3 space-y-1">
-                <div className="text-[11px] text-fg-subtle">
-                  插件参数（JSON）
-                  {!hasName && <span className="ml-1 text-danger">请先填写插件名称</span>}
-                </div>
+                <div className="text-[11px] text-fg-subtle">参数（JSON）</div>
                 <textarea
                   value={cp.params}
                   onChange={e => patch(i, { params: e.target.value })}
@@ -413,7 +469,7 @@ function CustomPluginsSection({ plugins, onChange }: { plugins: CustomPluginStat
                   className="h-28 w-full resize-y rounded border border-border bg-bg p-2 font-mono text-xs text-fg outline-none focus:border-accent"
                 />
                 <div className="text-[10px] text-fg-subtle">
-                  有效 JSON 对象，保存时无效 JSON 将被替换为 <code>{"{}"}</code>
+                  合法 JSON 对象；保存时无效 JSON 自动替换为 <code>{"{}"}</code>
                 </div>
               </div>
             )}
@@ -439,7 +495,7 @@ function MethodPicker({ value, onChange }: { value: string[]; onChange: (v: stri
 
 // ─── plugins panel (shared by route and service) ───────────────────────────
 
-function PluginsPanel({ state, onChange }: { state: PluginsState; onChange: (s: PluginsState) => void }) {
+function PluginsPanel({ state, onChange, catalog = [] }: { state: PluginsState; onChange: (s: PluginsState) => void; catalog?: PluginCatalogEntry[] }) {
   const set = <K extends keyof PluginsState>(key: K, val: PluginsState[K]) => onChange({ ...state, [key]: val });
 
   return (
@@ -538,6 +594,7 @@ function PluginsPanel({ state, onChange }: { state: PluginsState; onChange: (s: 
           <CustomPluginsSection
             plugins={state.custom}
             onChange={v => set("custom", v)}
+            catalog={catalog}
           />
         </div>
       </div>
@@ -547,7 +604,7 @@ function PluginsPanel({ state, onChange }: { state: PluginsState; onChange: (s: 
 
 // ─── resource-specific form sections ──────────────────────────────────────
 
-function RouteForm({ state, onChange, serviceOptions }: { state: RouteState; onChange: (s: RouteState) => void; serviceOptions: RefOption[] }) {
+function RouteForm({ state, onChange, serviceOptions, catalog }: { state: RouteState; onChange: (s: RouteState) => void; serviceOptions: RefOption[]; catalog: PluginCatalogEntry[] }) {
   const set = <K extends keyof RouteState>(k: K, v: RouteState[K]) => onChange({ ...state, [k]: v });
   return (
     <div className="space-y-4">
@@ -604,13 +661,13 @@ function RouteForm({ state, onChange, serviceOptions }: { state: RouteState; onC
       </Field>
       <div className="pt-1">
         <div className="mb-2 text-xs font-medium text-fg">插件</div>
-        <PluginsPanel state={state.plugins} onChange={v => set("plugins", v)} />
+        <PluginsPanel state={state.plugins} onChange={v => set("plugins", v)} catalog={catalog} />
       </div>
     </div>
   );
 }
 
-function ServiceForm({ state, onChange, upstreamOptions }: { state: ServiceState; onChange: (s: ServiceState) => void; upstreamOptions: RefOption[] }) {
+function ServiceForm({ state, onChange, upstreamOptions, catalog }: { state: ServiceState; onChange: (s: ServiceState) => void; upstreamOptions: RefOption[]; catalog: PluginCatalogEntry[] }) {
   const set = <K extends keyof ServiceState>(k: K, v: ServiceState[K]) => onChange({ ...state, [k]: v });
   return (
     <div className="space-y-4">
@@ -623,7 +680,7 @@ function ServiceForm({ state, onChange, upstreamOptions }: { state: ServiceState
       </Field>
       <div className="pt-1">
         <div className="mb-2 text-xs font-medium text-fg">插件</div>
-        <PluginsPanel state={state.plugins} onChange={v => set("plugins", v)} />
+        <PluginsPanel state={state.plugins} onChange={v => set("plugins", v)} catalog={catalog} />
       </div>
     </div>
   );
@@ -703,12 +760,20 @@ interface ResourceFormDrawerProps {
 }
 
 export function ResourceFormDrawer({ open, mode, resource, initialJson, serviceOptions = [], upstreamOptions = [], onSubmit, onClose }: ResourceFormDrawerProps) {
+  const api = useGatewayApi();
   const [routeState, setRouteState]     = useState<RouteState>(DEFAULT_ROUTE);
   const [serviceState, setServiceState] = useState<ServiceState>(DEFAULT_SERVICE);
   const [upstreamState, setUpstreamState] = useState<UpstreamState>(DEFAULT_UPSTREAM);
   const [jsonOpen, setJsonOpen]         = useState(false);
   const [submitting, setSubmitting]     = useState(false);
   const [submitError, setSubmitError]   = useState<string | null>(null);
+  const [pluginCatalog, setPluginCatalog] = useState<PluginCatalogEntry[]>([]);
+
+  // Fetch the plugin catalog once (silently ignore errors — falls back to empty)
+  useEffect(() => {
+    api.listPlugins().then(setPluginCatalog).catch(() => {});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Parse initial JSON into form state on open
   useEffect(() => {
@@ -761,10 +826,10 @@ export function ResourceFormDrawer({ open, mode, resource, initialJson, serviceO
         <CardBody className="space-y-4">
           {/* Main form */}
           {resource === "routes" && (
-            <RouteForm state={routeState} onChange={readOnly ? () => {} : setRouteState} serviceOptions={serviceOptions} />
+            <RouteForm state={routeState} onChange={readOnly ? () => {} : setRouteState} serviceOptions={serviceOptions} catalog={pluginCatalog} />
           )}
           {resource === "services" && (
-            <ServiceForm state={serviceState} onChange={readOnly ? () => {} : setServiceState} upstreamOptions={upstreamOptions} />
+            <ServiceForm state={serviceState} onChange={readOnly ? () => {} : setServiceState} upstreamOptions={upstreamOptions} catalog={pluginCatalog} />
           )}
           {resource === "upstreams" && (
             <UpstreamForm state={upstreamState} onChange={readOnly ? () => {} : setUpstreamState} />
