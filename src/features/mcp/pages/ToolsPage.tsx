@@ -1,16 +1,25 @@
+import { useQuery } from "@tanstack/react-query";
+
 import { Badge, Card, CardBody, CardHeader, PageHeader } from "@shared/ui";
 
-import { mcpTools } from "../mockData";
+import { useMcpApi } from "../api/client";
 
 export function ToolsPage() {
+  const mcpApi = useMcpApi();
+  const toolsQuery = useQuery({
+    queryKey: ["mcp", "tools"],
+    queryFn: () => mcpApi.listTools(),
+  });
+  const tools = toolsQuery.data ?? [];
+
   return (
     <div className="space-y-6">
       <PageHeader
         title="Tools"
-        description="Static prototype for every MCP tool, required scope, and schema drawer."
+        description="每个 MCP tool 的 scope 映射与状态。"
       />
       <Card>
-        <CardHeader title="Registered tools" description="Planned backing API: GET /admin/tools" />
+        <CardHeader title="Registered tools" description="GET /admin/tools" />
         <CardBody>
           <div className="overflow-hidden rounded border border-border">
             <table className="min-w-full divide-y divide-border text-left text-sm">
@@ -23,7 +32,11 @@ export function ToolsPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-border bg-bg-elevated">
-                {mcpTools.map((tool) => (
+                {toolsQuery.isLoading ? (
+                  <tr>
+                    <td className="px-4 py-3 text-fg-muted" colSpan={4}>Loading tools...</td>
+                  </tr>
+                ) : tools.map((tool) => (
                   <tr key={tool.name}>
                     <td className="px-4 py-3 font-mono text-xs text-fg">{tool.name}</td>
                     <td className="px-4 py-3 text-sm text-fg">{tool.description}</td>

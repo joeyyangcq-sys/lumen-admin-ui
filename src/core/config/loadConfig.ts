@@ -21,6 +21,13 @@ const DEFAULT_CONFIG: RuntimeConfig = {
     },
   },
   ui: { theme: "system", defaultLanding: "/gateway" },
+  features: {
+    oauthApiEnabled: false,
+    mcpApiEnabled: false,
+    dcrEnabled: false,
+    inviteEnabled: false,
+    rbacEnabled: false,
+  },
 };
 
 /**
@@ -65,5 +72,6 @@ function mergeConfig(base: RuntimeConfig, partial: Partial<RuntimeConfig>): Runt
       },
     },
     ui: { ...base.ui, ...partial.ui },
+    features: { ...base.features, ...partial.features },
   };
 }

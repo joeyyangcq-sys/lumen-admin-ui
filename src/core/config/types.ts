@@ -44,6 +44,14 @@ export interface UiConfig {
   defaultLanding: string;
 }
 
+export interface FeatureFlags {
+  oauthApiEnabled: boolean;
+  mcpApiEnabled: boolean;
+  dcrEnabled: boolean;
+  inviteEnabled: boolean;
+  rbacEnabled: boolean;
+}
+
 export interface RuntimeConfig {
   auth: AuthConfig;
   modules: {
@@ -53,4 +61,5 @@ export interface RuntimeConfig {
     monitoring: MonitoringConfig;
   };
   ui: UiConfig;
+  features: FeatureFlags;
 }

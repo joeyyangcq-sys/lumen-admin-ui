@@ -1,16 +1,25 @@
+import { useQuery } from "@tanstack/react-query";
+
 import { Badge, Card, CardBody, CardHeader, PageHeader } from "@shared/ui";
 
-import { oauthTokens } from "../mockData";
+import { useOAuthApi } from "../api/client";
 
 export function TokensPage() {
+  const oauthApi = useOAuthApi();
+  const tokensQuery = useQuery({
+    queryKey: ["oauth", "tokens"],
+    queryFn: () => oauthApi.listTokens(),
+  });
+  const tokens = tokensQuery.data ?? [];
+
   return (
     <div className="space-y-6">
       <PageHeader
         title="Active Tokens"
-        description="Prototype view for token sessions and future revoke workflow."
+        description="Token sessions view（real 模式先保留 mock 列表，后续接 /admin/tokens）。"
       />
       <Card>
-        <CardHeader title="Current tokens" description="Planned backing API: GET /admin/tokens" />
+        <CardHeader title="Current tokens" description="Phase-1 过渡: adapter 已接入，后端列表接口待补齐。" />
         <CardBody>
           <div className="overflow-hidden rounded border border-border">
             <table className="min-w-full divide-y divide-border text-left text-sm">
@@ -23,7 +32,11 @@ export function TokensPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-border bg-bg-elevated">
-                {oauthTokens.map((token) => (
+                {tokensQuery.isLoading ? (
+                  <tr>
+                    <td className="px-4 py-3 text-fg-muted" colSpan={4}>Loading tokens...</td>
+                  </tr>
+                ) : tokens.map((token) => (
                   <tr key={`${token.subject}-${token.clientId}`}>
                     <td className="px-4 py-3 text-fg">{token.subject}</td>
                     <td className="px-4 py-3 font-mono text-xs text-fg-subtle">{token.clientId}</td>

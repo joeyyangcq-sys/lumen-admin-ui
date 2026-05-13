@@ -1,23 +1,32 @@
+import { useQuery } from "@tanstack/react-query";
+
 import { Badge, Card, CardBody, CardHeader, PageHeader } from "@shared/ui";
 
-import { mcpAudit, mcpStats } from "../mockData";
-
-const STATS = [
-  { label: "Registered tools", value: mcpStats.tools },
-  { label: "Active sessions", value: mcpStats.sessions },
-  { label: "Calls / hour", value: mcpStats.callsPerHour },
-  { label: "Error rate", value: mcpStats.errorRate },
-];
+import { useMcpApi } from "../api/client";
 
 export function McpOverviewPage() {
+  const mcpApi = useMcpApi();
+  const overviewQuery = useQuery({
+    queryKey: ["mcp", "overview"],
+    queryFn: () => mcpApi.getOverview(),
+  });
+  const stats = overviewQuery.data?.stats;
+  const audit = overviewQuery.data?.audit ?? [];
+  const statItems = [
+    { label: "Registered tools", value: stats?.tools ?? "—" },
+    { label: "Active sessions", value: stats?.sessions ?? "—" },
+    { label: "Calls / hour", value: stats?.callsPerHour ?? "—" },
+    { label: "Error rate", value: stats?.errorRate ?? "—" },
+  ];
+
   return (
     <div className="space-y-6">
       <PageHeader
         title="MCP Server"
-        description="Static prototype for lumen-mcp-server: tools, sessions, playground, file bundle, audit."
+        description="lumen-mcp-server 概览（tools / sessions / audit）。"
       />
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-        {STATS.map((s) => (
+        {statItems.map((s) => (
           <Card key={s.label}>
             <CardBody className="space-y-1">
               <div className="text-[11px] uppercase tracking-wider text-fg-subtle">{s.label}</div>
@@ -28,9 +37,11 @@ export function McpOverviewPage() {
       </div>
 
       <Card>
-        <CardHeader title="Recent tool activity" description="Prototype view for /admin/audit" />
+        <CardHeader title="Recent tool activity" description="GET /admin/audit (real mode)" />
         <CardBody className="space-y-3">
-          {mcpAudit.map((item) => (
+          {overviewQuery.isLoading ? (
+            <div className="text-sm text-fg-muted">Loading MCP overview...</div>
+          ) : audit.map((item) => (
             <div key={`${item.at}-${item.tool}`} className="flex items-start justify-between rounded border border-border bg-bg-subtle/40 p-3">
               <div>
                 <div className="font-mono text-xs text-fg">{item.tool}</div>

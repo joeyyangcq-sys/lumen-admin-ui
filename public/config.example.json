@@ -30,5 +30,12 @@
   "ui": {
     "theme": "system",
     "defaultLanding": "/gateway"
+  },
+  "features": {
+    "oauthApiEnabled": false,
+    "mcpApiEnabled": false,
+    "dcrEnabled": false,
+    "inviteEnabled": false,
+    "rbacEnabled": false
   }
 }
