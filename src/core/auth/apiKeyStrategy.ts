@@ -13,14 +13,12 @@ export function createApiKeyStrategy(apiKey: string | undefined): AuthStrategy {
   const session: Session = {
     status: key ? "authenticated" : "unauthenticated",
     user: key
-      ? { id: "admin", name: "Admin", scopes: ["admin:*"] }
+      ? { id: "admin", name: "Admin", role: "admin" as const, scopes: ["admin:*"] }
       : undefined,
     signIn: () => {
       // Phase-1: no-op. The operator must edit /config.json.
       // eslint-disable-next-line no-console
-      console.warn(
-        "[auth/apikey] signIn() is a no-op. Set auth.apiKey in /config.json instead.",
-      );
+      console.warn("[auth/apikey] signIn() is a no-op. Set auth.apiKey in /config.json instead.");
     },
     signOut: () => {
       // eslint-disable-next-line no-console

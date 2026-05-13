@@ -1,28 +1,28 @@
 import { createContext, useContext, useMemo } from "react";
-import {
-  createBrowserRouter,
-  Navigate,
-  RouterProvider,
-  type RouteObject,
-} from "react-router-dom";
+import { createBrowserRouter, Navigate, RouterProvider, type RouteObject } from "react-router-dom";
 
 import { useConfig } from "@core/config/ConfigContext";
 import { resolveEnabledModules, type ResolvedModule } from "@core/config/ModuleRegistry";
 import { AppLayout } from "@core/layout/AppLayout";
 import { DashboardPage } from "@core/app/DashboardPage";
 import { NotFoundPage } from "@core/app/NotFoundPage";
+import { LoginPage } from "@core/auth/LoginPage";
+import { RequireAuth } from "@core/auth/RequireAuth";
+import { useModuleVisibility } from "@core/auth/localAuthStrategy";
 
 import { adminModules } from "./modules";
 
-/**
- * Compose the global router from the registered AdminModule list.
- *
- * The registry pattern keeps features decoupled: adding a 4th module is just
- * adding a new entry to `adminModules` — the router and sidebar pick it up.
- */
 export function RootRouter() {
   const config = useConfig();
-  const enabled = useMemo(() => resolveEnabledModules(adminModules, config), [config]);
+  const moduleVisibility = useModuleVisibility();
+
+  const enabled = useMemo(() => {
+    const resolved = resolveEnabledModules(adminModules, config);
+    return resolved.filter(({ module }) => {
+      const vis = moduleVisibility[module.id];
+      return vis === undefined || vis;
+    });
+  }, [config, moduleVisibility]);
 
   const router = useMemo(() => {
     const moduleRoutes: RouteObject[] = enabled.map(({ module }) => ({
@@ -30,18 +30,25 @@ export function RootRouter() {
       children: module.routes,
     }));
 
-    const root: RouteObject = {
-      path: "/",
-      Component: AppLayout,
-      children: [
-        { index: true, element: <Navigate to={config.ui.defaultLanding} replace /> },
-        { path: "dashboard", Component: DashboardPage },
-        ...moduleRoutes,
-        { path: "*", Component: NotFoundPage },
-      ],
-    };
+    const root: RouteObject[] = [
+      { path: "/login", Component: LoginPage },
+      {
+        path: "/",
+        element: (
+          <RequireAuth>
+            <AppLayout />
+          </RequireAuth>
+        ),
+        children: [
+          { index: true, element: <Navigate to={config.ui.defaultLanding} replace /> },
+          { path: "dashboard", Component: DashboardPage },
+          ...moduleRoutes,
+          { path: "*", Component: NotFoundPage },
+        ],
+      },
+    ];
 
-    return createBrowserRouter([root]);
+    return createBrowserRouter(root);
   }, [enabled, config.ui.defaultLanding]);
 
   return (

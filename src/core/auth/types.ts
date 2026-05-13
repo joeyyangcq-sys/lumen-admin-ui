@@ -3,6 +3,7 @@ export type SessionStatus = "loading" | "authenticated" | "unauthenticated";
 export interface SessionUser {
   id: string;
   name: string;
+  role: "admin" | "viewer";
   scopes: string[];
 }
 
