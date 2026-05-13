@@ -17,7 +17,9 @@
     "test:watch": "vitest",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
-    "test:e2e:install": "playwright install --with-deps chromium"
+    "test:e2e:install": "playwright install --with-deps chromium",
+    "test:e2e:integration": "playwright test -c playwright.integration.config.ts",
+    "test:e2e:integration:ui": "playwright test -c playwright.integration.config.ts --ui"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.59.16",

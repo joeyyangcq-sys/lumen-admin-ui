@@ -3,7 +3,14 @@
   "compilerOptions": {
     "noUnusedLocals": false,
     "noUnusedParameters": false,
-    "types": ["node"]
+    "types": [
+      "node"
+    ]
   },
-  "include": ["e2e", "playwright.config.ts"]
+  "include": [
+    "e2e",
+    "playwright.config.ts",
+    "playwright.integration.config.ts",
+    "e2e/integration"
+  ]
 }

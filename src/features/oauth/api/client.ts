@@ -41,6 +41,18 @@ function buildMockOverview(): OAuthOverview {
   return { stats: oauthStats, audit: oauthAudit };
 }
 
+function normalizeOAuthClientStatus(status: string): OAuthClientItem["status"] {
+  return status === "restricted" ? "restricted" : "active";
+}
+
+function normalizeOAuthUserType(type: string): OAuthUserItem["type"] {
+  return type === "service" ? "service" : "human";
+}
+
+function normalizeOAuthTokenStatus(status: string): OAuthTokenItem["status"] {
+  return status === "expiring" ? "expiring" : "active";
+}
+
 function normalizeRole(input: Record<string, unknown>): OAuthRole {
   const nameRaw = input.name ?? input.Name;
   const scopesRaw = input.scopes ?? input.Scopes;
@@ -72,9 +84,29 @@ export function createOAuthApi(client: {
   inviteEnabled: boolean;
   rbacEnabled: boolean;
 }): OAuthApi {
-  const listClients = async (): Promise<OAuthClientItem[]> => oauthClients;
-  const listUsers = async (): Promise<OAuthUserItem[]> => oauthUsers;
-  const listTokens = async (): Promise<OAuthTokenItem[]> => oauthTokens;
+  const listClients = async (): Promise<OAuthClientItem[]> =>
+    oauthClients.map((item) => ({
+      clientId: item.clientId,
+      name: item.name,
+      grants: [...item.grants],
+      redirects: item.redirects,
+      status: normalizeOAuthClientStatus(item.status),
+    }));
+  const listUsers = async (): Promise<OAuthUserItem[]> =>
+    oauthUsers.map((item) => ({
+      id: item.id,
+      name: item.name,
+      type: normalizeOAuthUserType(item.type),
+      roles: [...item.roles],
+    }));
+  const listTokens = async (): Promise<OAuthTokenItem[]> =>
+    oauthTokens.map((item) => ({
+      subject: item.subject,
+      clientId: item.clientId,
+      scope: item.scope,
+      ttl: item.ttl,
+      status: normalizeOAuthTokenStatus(item.status),
+    }));
 
   const listAudit = async (): Promise<OAuthAuditItem[]> => oauthAudit;
 

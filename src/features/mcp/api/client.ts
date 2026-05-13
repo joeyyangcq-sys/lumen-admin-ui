@@ -34,6 +34,19 @@ function normalizeTool(input: Record<string, unknown>): McpToolItem {
   };
 }
 
+function normalizeMockToolStatus(status: string): McpToolItem["status"] {
+  return status === "protected" ? "protected" : "enabled";
+}
+
+function normalizeMockSessionStatus(status: string): McpSessionItem["status"] {
+  return status === "idle" ? "idle" : "active";
+}
+
+function normalizeMockAuditResult(result: string): McpAuditItem["result"] {
+  if (result === "error") return "error";
+  return result === "denied" ? "denied" : "allowed";
+}
+
 function normalizeAudit(input: Record<string, unknown>): McpAuditItem {
   const atRaw = input.at ?? input.At;
   const toolRaw = input.tool ?? input.Tool;
@@ -57,23 +70,56 @@ function normalizeAudit(input: Record<string, unknown>): McpAuditItem {
 }
 
 function buildMockOverview(): McpOverview {
-  return { stats: mcpStats, audit: mcpAudit };
+  return {
+    stats: mcpStats,
+    audit: mcpAudit.map((item) => ({
+      at: item.at,
+      tool: item.tool,
+      principal: item.principal,
+      result: normalizeMockAuditResult(item.result),
+    })),
+  };
 }
 
 export function createMcpApi(client: {
   get<T>(path: string): Promise<T>;
   post<T>(path: string, body: unknown): Promise<T>;
 }, flags: { mcpApiEnabled: boolean }): McpApi {
-  const listSessions = async (): Promise<McpSessionItem[]> => mcpSessions;
+  const listSessions = async (): Promise<McpSessionItem[]> =>
+    mcpSessions.map((item) => ({
+      id: item.id,
+      agent: item.agent,
+      principal: item.principal,
+      lastCall: item.lastCall,
+      status: normalizeMockSessionStatus(item.status),
+    }));
   const listFileJobs = async (): Promise<McpFileJobItem[]> => mcpFileJobs;
 
   if (!flags.mcpApiEnabled) {
     return {
       getOverview: async () => buildMockOverview(),
-      listTools: async () => mcpTools,
-      listSessions,
+      listTools: async () =>
+        mcpTools.map((item) => ({
+          name: item.name,
+          scope: item.scope,
+          status: normalizeMockToolStatus(item.status),
+          description: item.description,
+        })),
+      listSessions: async () =>
+        listSessions().then((items) =>
+          items.map((item) => ({
+            ...item,
+            status: normalizeMockSessionStatus(item.status),
+          })),
+        ),
       listFileJobs,
-      listAudit: async () => mcpAudit,
+      listAudit: async () =>
+        mcpAudit.map((item) => ({
+          at: item.at,
+          tool: item.tool,
+          principal: item.principal,
+          result: normalizeMockAuditResult(item.result),
+        })),
       invokeTool: async () => ({ result: { note: "mock mode" } }),
     };
   }
