@@ -41,14 +41,23 @@ function subscribe(fn: () => void): () => void {
   };
 }
 
+let cachedSessionRaw: string | null = null;
+let cachedSession: StoredSession | null = null;
+
 function getSnapshot(): StoredSession | null {
   const raw = localStorage.getItem(STORAGE_KEY);
-  if (!raw) return null;
-  try {
-    return JSON.parse(raw) as StoredSession;
-  } catch {
+  if (raw === cachedSessionRaw) return cachedSession;
+  cachedSessionRaw = raw;
+  if (!raw) {
+    cachedSession = null;
     return null;
   }
+  try {
+    cachedSession = JSON.parse(raw) as StoredSession;
+  } catch {
+    cachedSession = null;
+  }
+  return cachedSession;
 }
 
 function authenticate(username: string, password: string): StoredSession | null {
@@ -69,14 +78,23 @@ function clearSession() {
   emitChange();
 }
 
+let cachedVisRaw: string | null = null;
+let cachedVis: Record<string, boolean> = {};
+
 export function getModuleVisibility(): Record<string, boolean> {
   const raw = localStorage.getItem(MODULE_VIS_KEY);
-  if (!raw) return {};
-  try {
-    return JSON.parse(raw) as Record<string, boolean>;
-  } catch {
-    return {};
+  if (raw === cachedVisRaw) return cachedVis;
+  cachedVisRaw = raw;
+  if (!raw) {
+    cachedVis = {};
+    return cachedVis;
   }
+  try {
+    cachedVis = JSON.parse(raw) as Record<string, boolean>;
+  } catch {
+    cachedVis = {};
+  }
+  return cachedVis;
 }
 
 export function setModuleVisibility(moduleId: string, visible: boolean) {
