@@ -117,6 +117,7 @@ export function createLocalAuthStrategy(): AuthStrategy {
   }
 
   return {
+    login: async (username, password) => login(username, password),
     getAuthHeaders: () => {
       const stored = getSnapshot();
       return stored ? { Authorization: `Bearer ${stored.token}` } : {};

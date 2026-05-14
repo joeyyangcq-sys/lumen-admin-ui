@@ -27,6 +27,7 @@ export function createApiKeyStrategy(apiKey: string | undefined): AuthStrategy {
   };
 
   return {
+    login: async () => ({ ok: Boolean(key), error: key ? undefined : "API key is not configured" }),
     getAuthHeaders: (): Record<string, string> => (key ? { "X-API-KEY": key } : {}),
     useSession: () => session,
   };

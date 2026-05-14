@@ -22,6 +22,8 @@ export interface Session {
 export interface AuthStrategy {
   /** Headers to attach to every outgoing API request. */
   getAuthHeaders(): Record<string, string>;
+  /** Authenticate with the backing auth provider. */
+  login(username: string, password: string): Promise<{ ok: boolean; error?: string }>;
   /** React-friendly session state. */
   useSession(): Session;
   /** Called when the api client receives a 401. */

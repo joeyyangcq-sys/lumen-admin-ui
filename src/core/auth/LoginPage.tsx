@@ -4,11 +4,11 @@ import { Activity, LogIn } from "lucide-react";
 
 import { Button } from "@shared/ui/Button";
 
-import { useSession } from "./AuthContext";
-import { login } from "./localAuthStrategy";
+import { useAuthStrategy, useSession } from "./AuthContext";
 
 export function LoginPage() {
   const session = useSession();
+  const auth = useAuthStrategy();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -18,12 +18,12 @@ export function LoginPage() {
     return <Navigate to="/" replace />;
   }
 
-  function handleSubmit(e: FormEvent) {
+  async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     setLoading(true);
     setError("");
 
-    const result = login(username, password);
+    const result = await auth.login(username, password);
     if (!result.ok) {
       setError(result.error ?? "Login failed");
       setLoading(false);
@@ -95,7 +95,9 @@ export function LoginPage() {
             {loading ? "Signing in…" : "Sign in"}
           </Button>
 
-          <p className="mt-4 text-center text-[11px] text-fg-subtle">Default: admin / admin</p>
+          <p className="mt-4 text-center text-[11px] text-fg-subtle">
+            Local default: admin@example.com / admin
+          </p>
         </form>
       </div>
     </div>

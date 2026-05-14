@@ -2,7 +2,7 @@ import { Search, Sun, Moon, User, Activity, LogOut, Settings, ChevronDown } from
 import { useEffect, useRef, useState } from "react";
 
 import { useSession } from "@core/auth/AuthContext";
-import { logout, useModuleVisibility, setModuleVisibility } from "@core/auth/localAuthStrategy";
+import { useModuleVisibility, setModuleVisibility } from "@core/auth/localAuthStrategy";
 import { adminModules } from "@core/router/modules";
 import { Button } from "@shared/ui/Button";
 
@@ -58,7 +58,7 @@ export function Topbar({ modules, health }: TopbarProps) {
 
           {isAdmin && <ModuleVisibilityMenu />}
 
-          <UserMenu userName={session.user?.name ?? "Anonymous"} />
+          <UserMenu userName={session.user?.name ?? "Anonymous"} signOut={session.signOut} />
         </div>
       </div>
 
@@ -69,7 +69,7 @@ export function Topbar({ modules, health }: TopbarProps) {
   );
 }
 
-function UserMenu({ userName }: { userName: string }) {
+function UserMenu({ userName, signOut }: { userName: string; signOut: () => void }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -97,7 +97,7 @@ function UserMenu({ userName }: { userName: string }) {
         <div className="absolute right-0 top-full z-50 mt-1 w-40 rounded-lg border border-border bg-bg-elevated py-1 shadow-lg">
           <button
             onClick={() => {
-              logout();
+              signOut();
               setOpen(false);
             }}
             className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-fg-muted hover:bg-bg-subtle hover:text-fg"

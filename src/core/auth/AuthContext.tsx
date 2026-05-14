@@ -2,8 +2,8 @@ import { createContext, useContext, useMemo, type ReactNode } from "react";
 
 import { useConfig } from "@core/config/ConfigContext";
 
-import { createApiKeyStrategy } from "./apiKeyStrategy";
 import { createLocalAuthStrategy } from "./localAuthStrategy";
+import { createOAuthAuthStrategy } from "./oauthAuthStrategy";
 import type { AuthStrategy, Session } from "./types";
 
 const AuthContext = createContext<AuthStrategy | undefined>(undefined);
@@ -16,13 +16,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       case "apikey":
         return createLocalAuthStrategy();
       case "oauth":
-        throw new Error("OAuth mode not implemented yet (Phase 2).");
+        return createOAuthAuthStrategy(config.auth.issuer);
       default: {
         const _exhaustive: never = config.auth.mode;
         throw new Error(`Unknown auth mode: ${String(_exhaustive)}`);
       }
     }
-  }, [config.auth.mode]);
+  }, [config.auth.issuer, config.auth.mode]);
 
   return <AuthContext.Provider value={strategy}>{children}</AuthContext.Provider>;
 }

@@ -1,7 +1,9 @@
 {
   "auth": {
-    "mode": "apikey",
-    "apiKey": "local-dev-admin-key"
+    "mode": "oauth",
+    "issuer": "http://localhost:9080",
+    "clientId": "lumen-admin-ui",
+    "scopes": ["openid", "profile", "email", "admin"]
   },
   "modules": {
     "gateway": {
@@ -9,11 +11,11 @@
       "baseUrl": "http://localhost:18080"
     },
     "oauth": {
-      "enabled": false,
+      "enabled": true,
       "baseUrl": "http://localhost:9080"
     },
     "mcp": {
-      "enabled": false,
+      "enabled": true,
       "baseUrl": "http://localhost:9280"
     },
     "monitoring": {
@@ -32,10 +34,10 @@
     "defaultLanding": "/gateway"
   },
   "features": {
-    "oauthApiEnabled": false,
-    "mcpApiEnabled": false,
-    "dcrEnabled": false,
-    "inviteEnabled": false,
+    "oauthApiEnabled": true,
+    "mcpApiEnabled": true,
+    "dcrEnabled": true,
+    "inviteEnabled": true,
     "rbacEnabled": false
   }
 }
