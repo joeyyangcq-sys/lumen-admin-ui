@@ -1,9 +1,8 @@
 import { Search, Sun, Moon, User, Activity, LogOut, Settings, ChevronDown } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 
 import { useSession } from "@core/auth/AuthContext";
-import { useModuleVisibility, setModuleVisibility } from "@core/auth/localAuthStrategy";
-import { adminModules } from "@core/router/modules";
 import { Button } from "@shared/ui/Button";
 
 import type { ResolvedModule } from "@core/config/ModuleRegistry";
@@ -17,6 +16,7 @@ interface TopbarProps {
 
 export function Topbar({ modules, health }: TopbarProps) {
   const session = useSession();
+  const navigate = useNavigate();
   const [theme, setTheme] = useState<"light" | "dark">(() =>
     document.documentElement.classList.contains("dark") ? "dark" : "light",
   );
@@ -56,7 +56,16 @@ export function Topbar({ modules, health }: TopbarProps) {
             {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
           </Button>
 
-          {isAdmin && <ModuleVisibilityMenu />}
+          {isAdmin && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => navigate("/settings")}
+              aria-label="admin settings"
+            >
+              <Settings className="h-4 w-4" />
+            </Button>
+          )}
 
           <UserMenu userName={session.user?.name ?? "Anonymous"} signOut={session.signOut} />
         </div>
@@ -69,7 +78,13 @@ export function Topbar({ modules, health }: TopbarProps) {
   );
 }
 
-function UserMenu({ userName, signOut }: { userName: string; signOut: () => void | Promise<void> }) {
+function UserMenu({
+  userName,
+  signOut,
+}: {
+  userName: string;
+  signOut: () => void | Promise<void>;
+}) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -105,56 +120,6 @@ function UserMenu({ userName, signOut }: { userName: string; signOut: () => void
             <LogOut className="h-4 w-4" />
             Sign out
           </button>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function ModuleVisibilityMenu() {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-  const visibility = useModuleVisibility();
-
-  useEffect(() => {
-    if (!open) return;
-    function handleClick(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    }
-    document.addEventListener("mousedown", handleClick);
-    return () => document.removeEventListener("mousedown", handleClick);
-  }, [open]);
-
-  return (
-    <div className="relative" ref={ref}>
-      <Button variant="ghost" size="sm" onClick={() => setOpen(!open)} aria-label="module settings">
-        <Settings className="h-4 w-4" />
-      </Button>
-
-      {open && (
-        <div className="absolute right-0 top-full z-50 mt-1 w-52 rounded-lg border border-border bg-bg-elevated py-2 shadow-lg">
-          <div className="mb-1 px-3 text-[11px] font-semibold uppercase tracking-wider text-fg-subtle">
-            Module Visibility
-          </div>
-          {adminModules.map((m) => {
-            const isVisible = visibility[m.id] !== false;
-            const Icon = m.icon;
-            return (
-              <label
-                key={m.id}
-                className="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-sm text-fg hover:bg-bg-subtle"
-              >
-                <input
-                  type="checkbox"
-                  checked={isVisible}
-                  onChange={(e) => setModuleVisibility(m.id, e.target.checked)}
-                  className="rounded accent-accent"
-                />
-                <Icon className="h-3.5 w-3.5 text-fg-muted" />
-                {m.displayName}
-              </label>
-            );
-          })}
         </div>
       )}
     </div>

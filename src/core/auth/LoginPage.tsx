@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from "react";
-import { Navigate } from "react-router-dom";
+import { Link, Navigate } from "react-router-dom";
 import { Activity, LogIn } from "lucide-react";
 
 import { Button } from "@shared/ui/Button";
@@ -32,7 +32,7 @@ export function LoginPage() {
 
   return (
     <div className="flex h-screen w-screen items-center justify-center bg-bg">
-      <div className="w-full max-w-sm">
+      <div className="w-full max-w-md px-4">
         <div className="mb-8 flex flex-col items-center gap-3">
           <div className="grid h-12 w-12 place-items-center rounded-xl bg-accent text-accent-fg">
             <Activity className="h-6 w-6" />
@@ -52,15 +52,15 @@ export function LoginPage() {
           <div className="space-y-4">
             <div>
               <label htmlFor="username" className="mb-1.5 block text-sm font-medium text-fg">
-                Username
+                Email
               </label>
               <input
                 id="username"
-                type="text"
+                type="email"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                placeholder="admin"
-                autoComplete="username"
+                placeholder="you@example.com"
+                autoComplete="email"
                 autoFocus
                 className="h-9 w-full rounded border border-border bg-bg px-3 text-sm text-fg outline-none placeholder:text-fg-subtle focus:border-accent"
               />
@@ -95,8 +95,11 @@ export function LoginPage() {
             {loading ? "Signing in…" : "Sign in"}
           </Button>
 
-          <p className="mt-4 text-center text-[11px] text-fg-subtle">
-            Local default: admin@example.com / admin
+          <p className="mt-4 text-center text-sm text-fg-muted">
+            Don&apos;t have an account?{" "}
+            <Link to="/register" className="text-accent hover:underline">
+              Register
+            </Link>
           </p>
         </form>
       </div>

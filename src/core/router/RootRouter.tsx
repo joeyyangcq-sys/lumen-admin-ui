@@ -6,7 +6,10 @@ import { resolveEnabledModules, type ResolvedModule } from "@core/config/ModuleR
 import { AppLayout } from "@core/layout/AppLayout";
 import { DashboardPage } from "@core/app/DashboardPage";
 import { NotFoundPage } from "@core/app/NotFoundPage";
+import { SettingsPage } from "@core/app/SettingsPage";
 import { LoginPage } from "@core/auth/LoginPage";
+import { RegisterPage } from "@core/auth/RegisterPage";
+import { VerifyEmailPage } from "@core/auth/VerifyEmailPage";
 import { RequireAuth } from "@core/auth/RequireAuth";
 import { useModuleVisibility } from "@core/auth/localAuthStrategy";
 
@@ -32,6 +35,8 @@ export function RootRouter() {
 
     const root: RouteObject[] = [
       { path: "/login", Component: LoginPage },
+      { path: "/register", Component: RegisterPage },
+      { path: "/verify-email", Component: VerifyEmailPage },
       {
         path: "/",
         element: (
@@ -42,6 +47,7 @@ export function RootRouter() {
         children: [
           { index: true, element: <Navigate to={config.ui.defaultLanding} replace /> },
           { path: "dashboard", Component: DashboardPage },
+          { path: "settings", Component: SettingsPage },
           ...moduleRoutes,
           { path: "*", Component: NotFoundPage },
         ],
