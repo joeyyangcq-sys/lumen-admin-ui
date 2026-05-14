@@ -12,17 +12,20 @@ interface OAuthUserResponse {
 
 interface LoginResponse {
   access_token: string;
+  csrf_token: string;
   user: OAuthUserResponse;
 }
 
-interface StoredOAuthSession {
+interface OAuthSessionState {
   accessToken: string;
+  csrfToken: string;
   user: SessionUser;
 }
 
-const STORAGE_KEY = "lumen:oauth-session";
+const LEGACY_STORAGE_KEY = "lumen:oauth-session";
 
 let listeners: Array<() => void> = [];
+let currentSession: OAuthSessionState | null = null;
 
 function emitChange() {
   for (const fn of listeners) fn();
@@ -35,24 +38,25 @@ function subscribe(fn: () => void): () => void {
   };
 }
 
-function getSnapshot(): StoredOAuthSession | null {
-  const raw = localStorage.getItem(STORAGE_KEY);
-  if (!raw) return null;
-  try {
-    return JSON.parse(raw) as StoredOAuthSession;
-  } catch {
-    return null;
-  }
+function getSnapshot(): OAuthSessionState | null {
+  return currentSession;
 }
 
 function clearSession() {
-  localStorage.removeItem(STORAGE_KEY);
+  currentSession = null;
+  clearLegacySessionStorage();
   emitChange();
 }
 
-function storeSession(session: StoredOAuthSession) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(session));
+function storeSession(session: OAuthSessionState) {
+  currentSession = session;
+  clearLegacySessionStorage();
   emitChange();
+}
+
+function clearLegacySessionStorage() {
+  if (typeof localStorage === "undefined") return;
+  localStorage.removeItem(LEGACY_STORAGE_KEY);
 }
 
 function toSessionUser(user: OAuthUserResponse): SessionUser {
@@ -66,6 +70,8 @@ function toSessionUser(user: OAuthUserResponse): SessionUser {
 
 export function createOAuthAuthStrategy(issuer: string | undefined): AuthStrategy {
   const baseUrl = (issuer ?? "").replace(/\/+$/, "");
+  currentSession = null;
+  clearLegacySessionStorage();
 
   async function login(username: string, password: string): Promise<{ ok: boolean; error?: string }> {
     if (!baseUrl) return { ok: false, error: "OAuth issuer is not configured" };
@@ -74,20 +80,37 @@ export function createOAuthAuthStrategy(issuer: string | undefined): AuthStrateg
       res = await fetch(`${baseUrl}/auth/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Accept: "application/json" },
+        credentials: "include",
         body: JSON.stringify({ email: username, password }),
       });
     } catch (err) {
       return { ok: false, error: (err as Error).message };
     }
     const payload = (await safeJSON(res)) as Partial<LoginResponse> & { message?: string };
-    if (!res.ok || !payload.access_token || !payload.user) {
+    if (!res.ok || !payload.access_token || !payload.csrf_token || !payload.user) {
       return { ok: false, error: payload.message ?? "Login failed" };
     }
     storeSession({
       accessToken: payload.access_token,
+      csrfToken: payload.csrf_token,
       user: toSessionUser(payload.user),
     });
     return { ok: true };
+  }
+
+  async function logout(): Promise<void> {
+    const csrfToken = currentSession?.csrfToken;
+    try {
+      if (baseUrl && csrfToken) {
+        await fetch(`${baseUrl}/auth/logout`, {
+          method: "POST",
+          headers: { Accept: "application/json", "X-CSRF-Token": csrfToken },
+          credentials: "include",
+        });
+      }
+    } finally {
+      clearSession();
+    }
   }
 
   function useSession(): Session {
@@ -103,15 +126,16 @@ export function createOAuthAuthStrategy(issuer: string | undefined): AuthStrateg
       status: "authenticated",
       user: stored.user,
       signIn: () => {},
-      signOut: clearSession,
+      signOut: logout,
     };
   }
 
   return {
     login,
-    getAuthHeaders: () => {
+    getAuthHeaders: (): Record<string, string> => {
       const stored = getSnapshot();
-      return stored ? { Authorization: `Bearer ${stored.accessToken}` } : {};
+      if (!stored) return {};
+      return { Authorization: `Bearer ${stored.accessToken}` };
     },
     useSession,
     onUnauthorized: clearSession,

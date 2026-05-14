@@ -11,7 +11,7 @@ export interface Session {
   status: SessionStatus;
   user?: SessionUser;
   signIn: () => void;
-  signOut: () => void;
+  signOut: () => void | Promise<void>;
 }
 
 /**

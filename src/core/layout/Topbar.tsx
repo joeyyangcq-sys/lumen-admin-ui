@@ -69,7 +69,7 @@ export function Topbar({ modules, health }: TopbarProps) {
   );
 }
 
-function UserMenu({ userName, signOut }: { userName: string; signOut: () => void }) {
+function UserMenu({ userName, signOut }: { userName: string; signOut: () => void | Promise<void> }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -97,7 +97,7 @@ function UserMenu({ userName, signOut }: { userName: string; signOut: () => void
         <div className="absolute right-0 top-full z-50 mt-1 w-40 rounded-lg border border-border bg-bg-elevated py-1 shadow-lg">
           <button
             onClick={() => {
-              signOut();
+              void signOut();
               setOpen(false);
             }}
             className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-fg-muted hover:bg-bg-subtle hover:text-fg"
