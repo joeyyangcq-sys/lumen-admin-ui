@@ -437,6 +437,43 @@ COPY deploy/nginx.conf /etc/nginx/conf.d/default.conf
 
 SPA 路由：`try_files $uri $uri/ /index.html`
 
+### 8.4 全栈部署（Docker Compose 一键启动）
+
+Lumen Admin UI 是 Lumen 全栈平台的一部分。使用根目录的 `docker-compose.yml` 可一键启动所有 8 个服务：
+
+```bash
+cd api-gateway
+docker compose up -d --build
+```
+
+**启动顺序**：`etcd` + `PostgreSQL` → `Gateway` → `OAuth` → `MCP Server` + `Prometheus` → `Grafana` → `Admin UI`
+
+Admin UI 等待所有后端服务健康后才启动。启动后访问：
+
+```bash
+# 健康检查
+curl http://localhost:5173/health
+
+# 浏览器打开管理控制台
+open http://localhost:5173
+# 默认管理员: admin@example.com / admin
+```
+
+Docker Compose 通过 volume 挂载 `configs/fullstack/admin-ui.config.json` 到容器内的 `/usr/share/nginx/html/config.json`，启用全部模块（Gateway + OAuth + MCP + Monitoring）。
+
+**全栈端口一览**：
+
+| 服务 | 端口 | 地址 |
+|------|------|------|
+| Gateway | 18080 | http://localhost:18080 |
+| OAuth | 9080 | http://localhost:9080 |
+| MCP Server | 9280 | http://localhost:9280 |
+| Admin UI | 5173 | http://localhost:5173 |
+| Grafana | 3000 | http://localhost:3000 |
+| Prometheus | 9090 | http://localhost:9090 |
+| etcd | 2379 | http://localhost:2379 |
+| PostgreSQL | 5432 | localhost:5432 |
+
 ---
 
 ## 9. 代码结构
