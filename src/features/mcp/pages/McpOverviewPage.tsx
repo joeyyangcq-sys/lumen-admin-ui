@@ -22,14 +22,28 @@ const SCOPE_TOOL_MAP: Record<string, string[]> = {
   "metrics:read": ["get_stats"],
   "admin:dangerous": ["history_rollback"],
   "mcp:read": [
-    "list_routes", "get_route", "list_services", "list_upstreams",
-    "list_plugin_configs", "list_global_rules", "export_bundle",
-    "history_list", "get_schema", "list_plugins", "get_stats",
+    "list_routes",
+    "get_route",
+    "list_services",
+    "list_upstreams",
+    "list_plugin_configs",
+    "list_global_rules",
+    "export_bundle",
+    "history_list",
+    "get_schema",
+    "list_plugins",
+    "get_stats",
   ],
   "mcp:write": [
-    "put_route", "patch_route", "delete_route", "put_service",
-    "put_upstream", "put_plugin_config", "put_global_rule",
-    "preview_import", "apply_import",
+    "put_route",
+    "patch_route",
+    "delete_route",
+    "put_service",
+    "put_upstream",
+    "put_plugin_config",
+    "put_global_rule",
+    "preview_import",
+    "apply_import",
   ],
   "admin:*": ["*"],
 };
@@ -107,15 +121,20 @@ export function McpOverviewPage() {
         <CardBody className="space-y-3">
           {overviewQuery.isLoading ? (
             <div className="text-sm text-fg-muted">Loading MCP overview...</div>
-          ) : audit.map((item) => (
-            <div key={`${item.at}-${item.tool}`} className="flex items-start justify-between rounded border border-border bg-bg-subtle/40 p-3">
-              <div>
-                <div className="font-mono text-xs text-fg">{item.tool}</div>
-                <div className="mt-1 text-xs text-fg-muted">{item.principal}</div>
+          ) : (
+            audit.map((item) => (
+              <div
+                key={`${item.at}-${item.tool}`}
+                className="flex items-start justify-between rounded border border-border bg-bg-subtle/40 p-3"
+              >
+                <div>
+                  <div className="font-mono text-xs text-fg">{item.tool}</div>
+                  <div className="mt-1 text-xs text-fg-muted">{item.principal}</div>
+                </div>
+                <Badge tone={item.result === "allowed" ? "success" : "danger"}>{item.at}</Badge>
               </div>
-              <Badge tone={item.result === "allowed" ? "success" : "danger"}>{item.at}</Badge>
-            </div>
-          ))}
+            ))
+          )}
         </CardBody>
       </Card>
     </div>
@@ -131,8 +150,17 @@ interface SessionInfoCardProps {
   hasWildcard: boolean;
 }
 
-function SessionInfoCard({ userName, role, scopes, allTools, authorizedTools, hasWildcard }: SessionInfoCardProps) {
-  const accessibleCount = hasWildcard ? allTools.length : allTools.filter((t) => authorizedTools.has(t.name)).length;
+function SessionInfoCard({
+  userName,
+  role,
+  scopes,
+  allTools,
+  authorizedTools,
+  hasWildcard,
+}: SessionInfoCardProps) {
+  const accessibleCount = hasWildcard
+    ? allTools.length
+    : allTools.filter((t) => authorizedTools.has(t.name)).length;
   const deniedCount = allTools.length - accessibleCount;
 
   return (
@@ -189,7 +217,9 @@ function SessionInfoCard({ userName, role, scopes, allTools, authorizedTools, ha
               <span className="text-xs text-fg-muted">No scopes granted</span>
             ) : (
               scopes.map((scope) => (
-                <Badge key={scope} tone="accent" className="font-mono">{scope}</Badge>
+                <Badge key={scope} tone="accent" className="font-mono">
+                  {scope}
+                </Badge>
               ))
             )}
           </div>
@@ -214,7 +244,9 @@ function SessionInfoCard({ userName, role, scopes, allTools, authorizedTools, ha
                       <tr key={tool.name}>
                         <td className="px-3 py-2 font-mono text-xs text-fg">{tool.name}</td>
                         <td className="px-3 py-2">
-                          <Badge tone="neutral" className="font-mono">{tool.scope}</Badge>
+                          <Badge tone="neutral" className="font-mono">
+                            {tool.scope}
+                          </Badge>
                         </td>
                         <td className="px-3 py-2">
                           <Badge tone={allowed ? "success" : "danger"}>

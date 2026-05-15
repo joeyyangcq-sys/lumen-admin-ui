@@ -21,6 +21,10 @@ export interface ModuleConfig {
   baseUrl: string;
   /** Optional per-module API key override (Phase-1 only). */
   apiKey?: string;
+  /** Optional control-plane backing etcd endpoint, displayed/configured by the gateway page. */
+  etcdUrl?: string;
+  /** Optional etcd key prefix used by the gateway control plane. */
+  etcdPrefix?: string;
 }
 
 /** Which Grafana dashboards admin-ui knows how to deep-link into. */
@@ -29,6 +33,8 @@ export type DashboardKey = "overview" | "gateway" | "oauth" | "mcp";
 export interface MonitoringConfig extends ModuleConfig {
   /** Grafana org id, default 1. */
   orgId?: number;
+  /** Grafana datasource name/uid used for Explore links and templated dashboards. */
+  datasource?: string;
   /** Map from logical dashboard key → Grafana dashboard UID. */
   dashboards?: Partial<Record<DashboardKey, string>>;
   /** Default theme for embedded Grafana panels. */

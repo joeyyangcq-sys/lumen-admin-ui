@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 
 import { loadConfig } from "./loadConfig";
 import type { RuntimeConfig } from "./types";
@@ -9,6 +9,12 @@ type ConfigState =
   | { status: "error"; error: Error };
 
 const ConfigContext = createContext<ConfigState | undefined>(undefined);
+const ConfigActionsContext = createContext<
+  | {
+      updateConfig: (updater: (config: RuntimeConfig) => RuntimeConfig) => void;
+    }
+  | undefined
+>(undefined);
 
 export function ConfigProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<ConfigState>({ status: "loading" });
@@ -32,7 +38,22 @@ export function ConfigProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  return <ConfigContext.Provider value={state}>{children}</ConfigContext.Provider>;
+  const actions = useMemo(
+    () => ({
+      updateConfig: (updater: (config: RuntimeConfig) => RuntimeConfig) => {
+        setState((current) =>
+          current.status === "ready" ? { status: "ready", config: updater(current.config) } : current,
+        );
+      },
+    }),
+    [],
+  );
+
+  return (
+    <ConfigActionsContext.Provider value={actions}>
+      <ConfigContext.Provider value={state}>{children}</ConfigContext.Provider>
+    </ConfigActionsContext.Provider>
+  );
 }
 
 export function useConfigState(): ConfigState {
@@ -47,4 +68,10 @@ export function useConfig(): RuntimeConfig {
     throw new Error("useConfig() called before config is ready. Wrap in <RequireConfig>.");
   }
   return state.config;
+}
+
+export function useConfigActions() {
+  const ctx = useContext(ConfigActionsContext);
+  if (!ctx) throw new Error("useConfigActions must be used inside <ConfigProvider>");
+  return ctx;
 }

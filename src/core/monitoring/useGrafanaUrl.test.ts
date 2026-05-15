@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { MonitoringConfig } from "@core/config/types";
 
-import { buildDashboardUrl, buildPanelUrl } from "./useGrafanaUrl";
+import { buildDashboardUrl, buildExploreUrl, buildPanelUrl } from "./useGrafanaUrl";
 
 const cfg: MonitoringConfig = {
   enabled: true,
@@ -10,6 +10,7 @@ const cfg: MonitoringConfig = {
   orgId: 2,
   theme: "dark",
   kiosk: true,
+  datasource: "prom-main",
   dashboards: {
     gateway: "abc123",
     oauth: "def456",
@@ -43,6 +44,15 @@ describe("buildDashboardUrl", () => {
     const u = new URL(url);
     expect(u.searchParams.get("var-instance")).toBe("router-1");
     expect(u.searchParams.get("var-env")).toBe("prod");
+  });
+});
+
+describe("buildExploreUrl", () => {
+  it("uses the configured datasource", () => {
+    const url = buildExploreUrl(cfg, "sum(rate(http_requests_total[1m]))");
+    const u = new URL(url);
+    const left = JSON.parse(u.searchParams.get("left") ?? "{}") as { datasource?: string };
+    expect(left.datasource).toBe("prom-main");
   });
 });
 

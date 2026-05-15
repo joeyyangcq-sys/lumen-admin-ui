@@ -2,9 +2,10 @@ import { useMemo } from "react";
 
 import { useConfig } from "@core/config/ConfigContext";
 import { useAuthStrategy } from "@core/auth/AuthContext";
-import type { KnownModuleId } from "@core/config/types";
+import type { KnownModuleId, ModuleConfig } from "@core/config/types";
 
 import { ApiClient } from "./ApiClient";
+import type { AuthHeaderProvider } from "./ApiClient";
 
 /**
  * Hook factory: returns an ApiClient bound to the given module's baseUrl.
@@ -21,14 +22,19 @@ export function useModuleApiClient(moduleId: KnownModuleId): ApiClient {
     return new ApiClient({
       baseUrl: moduleCfg.baseUrl,
       auth: {
-        getAuthHeaders: () => {
-          const headers = auth.getAuthHeaders();
-          // module-level apiKey override wins for Phase 1
-          if (moduleCfg.apiKey) headers["X-API-KEY"] = moduleCfg.apiKey;
-          return headers;
-        },
+        getAuthHeaders: () => createModuleAuthHeaders(auth, moduleCfg),
         ...(auth.onUnauthorized ? { onUnauthorized: auth.onUnauthorized } : {}),
       },
     });
   }, [config, auth, moduleId]);
+}
+
+export function createModuleAuthHeaders(
+  auth: AuthHeaderProvider,
+  moduleCfg: Pick<ModuleConfig, "apiKey">,
+): Record<string, string> {
+  if (moduleCfg.apiKey) {
+    return { "X-API-KEY": moduleCfg.apiKey };
+  }
+  return auth.getAuthHeaders();
 }

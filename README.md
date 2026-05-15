@@ -1,102 +1,136 @@
-# lumen-admin-ui
+# Lumen Admin UI
 
-Unified web console for the Lumen suite:
+Unified web console for the Lumen platform. Manages three backend services through a modular, independently-togglable interface:
 
-- `lumen-gateway` — data + control plane
-- `lumen-OAuth` — independent identity service
-- `lumen-mcp-server` — MCP control-plane adapter
+- **Gateway** -- route, service, upstream, and plugin management via the Lumen Gateway Admin API
+- **OAuth** -- client, user, scope, and token management via Lumen OAuth
+- **MCP** -- tool catalog, sessions, playground, and audit via Lumen MCP Server
 
-> **Modules are decoupled and independently togglable.** A single deployable
-> serves any subset of the three backends, picked at runtime via `/config.json`.
+Built with React 18 + TypeScript + Vite + Tailwind CSS. Modules are decoupled -- a single build serves any subset of backends, selected at runtime via `/config.json`.
 
-See [`UI_EXECUTION_PLAN.md`](./UI_EXECUTION_PLAN.md) for the full design.
-
-For page prototypes and the cross-module integration blueprint, see
-[`docs/CONSOLE_PROTOTYPES.md`](./docs/CONSOLE_PROTOTYPES.md).
-
----
-
-## Quick start
+## Quick Start
 
 ```bash
 pnpm install
 cp public/config.example.json public/config.json
-# edit public/config.json: enable the modules you want, set baseUrl + apiKey
+# Edit public/config.json to point at your backends
 pnpm dev          # http://localhost:5173
 ```
 
-## Scripts
+Or via Docker Compose (from project root):
 
-| script | what it does |
-|--------|--------------|
-| `pnpm dev` | Vite dev server (port 5173) |
-| `pnpm build` | Type-check + Vite production build |
-| `pnpm preview` | Serve the built `dist/` |
-| `pnpm typecheck` | `tsc --noEmit` |
-| `pnpm lint` | ESLint, fails on warnings |
-| `pnpm format` | Prettier write |
-| `pnpm test` | Vitest single-run |
-
-## Architecture in 30 seconds
-
-```text
-src/
-├── core/               # platform layer — knows about modules, not what they do
-│   ├── app/            # App shell, Providers, Dashboard, NotFound
-│   ├── config/         # /config.json loader, ConfigContext, ModuleRegistry
-│   ├── api/            # ApiClient + ApiError
-│   ├── auth/           # AuthStrategy interface + apiKey impl (OAuth Phase-2)
-│   ├── layout/         # Sidebar, Topbar, AppLayout
-│   └── router/         # RootRouter that composes feature routes
-│
-├── features/
-│   ├── gateway/        # lumen-gateway control-plane UI
-│   ├── oauth/          # lumen-OAuth admin UI
-│   └── mcp/            # lumen-mcp-server admin UI
-│
-└── shared/             # framework-agnostic UI primitives + utils
+```bash
+docker compose up -d admin-ui
+# Open http://localhost:5173
 ```
 
-### The three rules
+## Auth Modes
 
-- Features may not import each other.
-- `core/*` may not import `features/*`.
-- `shared/*` may not import `core/*` or `features/*`.
+| Mode | Description |
+|------|-------------|
+| `oauth` | Full OAuth 2.0 flow via Lumen OAuth (login page, session, token refresh) |
+| `apikey` | Simple API key for development |
 
-ESLint enforces all three (`no-restricted-imports`, see `eslint.config.js`).
+Configured in `/config.json` under `auth.mode`.
 
-### Adding a new module
+## Tech Stack
 
-1. Create `src/features/<id>/module.ts` exporting an `AdminModule`.
-2. Add `<id>` to `KnownModuleId` in `src/core/config/types.ts`.
-3. Append the module to `adminModules` in `src/core/router/modules.ts`.
+| Layer | Libraries |
+|-------|-----------|
+| Framework | React 18, React Router |
+| State | Zustand, React Query |
+| Forms | React Hook Form + Zod |
+| Styling | Tailwind CSS, tailwind-merge, clsx |
+| Animation | Framer Motion |
+| Icons | Lucide React |
+| Build | Vite, TypeScript |
+| Test | Vitest |
 
-That's it — sidebar, dashboard, routing pick it up.
+## Scripts
 
-## Runtime configuration
+| Script | Description |
+|--------|-------------|
+| `pnpm dev` | Vite dev server (port 5173) |
+| `pnpm build` | Type-check + production build |
+| `pnpm preview` | Serve built `dist/` |
+| `pnpm typecheck` | `tsc --noEmit` |
+| `pnpm lint` | ESLint (fails on warnings) |
+| `pnpm format` | Prettier |
+| `pnpm test` | Vitest single-run |
 
-`/config.json` is fetched at boot — no rebuild needed to flip modules:
+## Architecture
+
+```
+src/
+  core/                    Platform layer (module-aware, feature-agnostic)
+    app/                   App shell, Providers, Dashboard, NotFound
+    config/                /config.json loader, ConfigContext, ModuleRegistry
+    api/                   ApiClient + ApiError
+    auth/                  AuthStrategy interface, OAuth + API key strategies
+                           LoginPage, RegisterPage, VerifyEmailPage
+    layout/                Sidebar, Topbar, AppLayout, ModuleTabs
+    router/                RootRouter, module route composition
+    monitoring/            Grafana iframe integration
+
+  features/
+    gateway/               Lumen Gateway control-plane UI
+      api/                 Gateway API client (routes, services, upstreams, etc.)
+      pages/               ResourceListPage, BundleImportPage, ExportPage, HistoryPage
+      components/          ResourceFormDrawer, ResourceJsonDrawer
+    oauth/                 Lumen OAuth admin UI
+      api/                 OAuth API client
+      pages/               ClientsPage, UsersPage, ScopesPage, TokensPage, AuditPage
+    mcp/                   Lumen MCP Server admin UI
+      api/                 MCP API client
+      pages/               ToolsPage, SessionsPage, PlaygroundPage, FileBundlePage, AuditPage
+
+  shared/                  Framework-agnostic UI primitives
+    ui/                    Button, Card, Badge, EmptyState, PageHeader, GrafanaPanel
+    utils/                 cn() helper
+```
+
+### Module Isolation Rules
+
+1. Features may not import each other
+2. `core/*` may not import `features/*`
+3. `shared/*` may not import `core/*` or `features/*`
+
+Enforced by ESLint `no-restricted-imports`.
+
+### Adding a Module
+
+1. Create `src/features/<id>/module.ts` exporting an `AdminModule`
+2. Add `<id>` to `KnownModuleId` in `src/core/config/types.ts`
+3. Append module to `adminModules` in `src/core/router/modules.ts`
+
+Sidebar, dashboard, and routing auto-discover it.
+
+## Runtime Configuration
+
+`/config.json` is fetched at boot -- no rebuild needed:
 
 ```json
 {
-  "auth": { "mode": "apikey", "apiKey": "…" },
-  "modules": {
-    "gateway": { "enabled": true,  "baseUrl": "http://localhost:9180" },
-    "oauth":   { "enabled": false, "baseUrl": "http://localhost:9080" },
-    "mcp":     { "enabled": false, "baseUrl": "http://localhost:9280" }
+  "auth": {
+    "mode": "oauth",
+    "issuer": "http://localhost:9080",
+    "clientId": "lumen-admin-ui",
+    "scopes": ["openid", "profile", "email", "admin"]
   },
-  "ui": { "theme": "system", "defaultLanding": "/gateway" }
+  "modules": {
+    "gateway": { "enabled": true, "baseUrl": "http://localhost:18080" },
+    "oauth":   { "enabled": true, "baseUrl": "http://localhost:9080" },
+    "mcp":     { "enabled": true, "baseUrl": "http://localhost:9280" },
+    "monitoring": {
+      "enabled": true,
+      "baseUrl": "http://localhost:3000",
+      "dashboards": { "gateway": "lumen-gateway", "overview": "lumen-overview" }
+    }
+  },
+  "ui": { "theme": "system", "defaultLanding": "/dashboard" }
 }
 ```
 
-`auth.mode` accepts `"apikey"` (Phase 1) and `"oauth"` (Phase 2).
+## Docker
 
-## Status
-
-| Phase | Scope | Status |
-|------:|-------|--------|
-| 1 | Skeleton + module registry + Gateway MVP | scaffolded; pages are placeholders awaiting API wiring |
-| 2 | OAuth module (clients/users/scopes/tokens/audit) | placeholders; awaits `lumen-OAuth` Milestone OAUTH-1 |
-| 3 | MCP module (tools/sessions/playground/file-bundle/audit) | placeholders; awaits `lumen-mcp-server` Milestone MCP-1 |
-| 4 | UX polish (Monaco, ⌘K palette, structured forms) | not started |
-| 5 | Multi-user, approval chains | not started |
+Multi-stage build: Node build -> Nginx serve. `config.json` is mounted at runtime via docker-compose volume, so no rebuild is needed to change backends.

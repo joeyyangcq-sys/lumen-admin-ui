@@ -1,28 +1,77 @@
-import { useQueries, useQuery } from "@tanstack/react-query";
+import { useMemo, useState, type FormEvent } from "react";
+import { useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 
-import { Badge, Button, Card, CardBody, CardHeader, EmptyState, GrafanaPanel, PageHeader } from "@shared/ui";
-import { useGrafanaUrl } from "@core/monitoring/useGrafanaUrl";
+import {
+  Badge,
+  Button,
+  Card,
+  CardBody,
+  CardHeader,
+  EmptyState,
+  GrafanaPanel,
+  PageHeader,
+} from "@shared/ui";
+import { useConfig, useConfigActions } from "@core/config/ConfigContext";
+import {
+  clearGatewayControlPlaneOverride,
+  readGatewayControlPlaneOverride,
+  writeGatewayControlPlaneOverride,
+  type GatewayControlPlaneOverride,
+} from "@core/config/loadConfig";
+import { buildDashboardUrl, buildExploreUrl, useGrafanaUrl } from "@core/monitoring/useGrafanaUrl";
+import type { ModuleConfig, MonitoringConfig } from "@core/config/types";
 
 import { useGatewayApi } from "../api/client";
 import { formatCounts, formatRelativeTime } from "../api/utils";
 import type { GatewayResourceKind } from "../api/types";
 
 const STAT_ITEMS: Array<{ label: string; kind: GatewayResourceKind; path: string }> = [
-  { label: "Routes",        kind: "routes",         path: "/gateway/routes"         },
-  { label: "Services",      kind: "services",        path: "/gateway/services"       },
-  { label: "Upstreams",     kind: "upstreams",       path: "/gateway/upstreams"      },
-  { label: "Plugin Configs",kind: "plugin_configs",  path: "/gateway/plugin-configs" },
-  { label: "Global Rules",  kind: "global_rules",    path: "/gateway/global-rules"   },
+  { label: "Routes", kind: "routes", path: "/gateway/routes" },
+  { label: "Services", kind: "services", path: "/gateway/services" },
+  { label: "Upstreams", kind: "upstreams", path: "/gateway/upstreams" },
+  { label: "Plugin Configs", kind: "plugin_configs", path: "/gateway/plugin-configs" },
+  { label: "Global Rules", kind: "global_rules", path: "/gateway/global-rules" },
 ];
+
+const MONITORING_OVERRIDE_KEY = "lumen:gateway-monitoring-config";
+
+interface MonitoringOverride {
+  baseUrl: string;
+  dashboardUid: string;
+  datasource: string;
+  orgId?: number;
+}
+
+interface MonitoringDraft {
+  baseUrl: string;
+  dashboardUid: string;
+  datasource: string;
+  orgId: string;
+}
+
+interface ControlPlaneDraft {
+  baseUrl: string;
+  apiKey: string;
+  etcdUrl: string;
+  etcdPrefix: string;
+}
 
 // ─── tiny helpers ────────────────────────────────────────────────────────────
 
 function MetricTile({
-  label, value, sub, color = "text-fg",
-}: { label: string; value: string | number; sub?: string; color?: string }) {
+  label,
+  value,
+  sub,
+  color = "text-fg",
+}: {
+  label: string;
+  value: string | number;
+  sub?: string;
+  color?: string;
+}) {
   return (
-    <div className="rounded border border-border bg-bg-subtle/50 px-4 py-3 space-y-1">
+    <div className="space-y-1 rounded border border-border bg-bg-subtle/50 px-4 py-3">
       <div className="text-[11px] uppercase tracking-wider text-fg-subtle">{label}</div>
       <div className={`font-mono text-2xl font-semibold ${color}`}>{value}</div>
       {sub && <div className="text-[11px] text-fg-subtle">{sub}</div>}
@@ -33,8 +82,46 @@ function MetricTile({
 // ─── page ─────────────────────────────────────────────────────────────────────
 
 export function GatewayOverviewPage() {
+  const runtimeConfig = useConfig();
+  const { updateConfig } = useConfigActions();
+  const queryClient = useQueryClient();
+  const gatewayCfg = runtimeConfig.modules.gateway;
   const gatewayApi = useGatewayApi();
-  const { dashboardUrl, exploreUrl, config: monitoringCfg } = useGrafanaUrl();
+  const { config: monitoringCfg } = useGrafanaUrl();
+  const [controlPlaneOverride, setControlPlaneOverride] =
+    useState<GatewayControlPlaneOverride | null>(() => readGatewayControlPlaneOverride());
+  const [isControlPlaneFormOpen, setControlPlaneFormOpen] = useState(false);
+  const [controlPlaneDraft, setControlPlaneDraft] = useState<ControlPlaneDraft>(() =>
+    draftFromGatewayConfig(gatewayCfg),
+  );
+  const [monitoringOverride, setMonitoringOverride] = useState<MonitoringOverride | null>(() =>
+    readMonitoringOverride(),
+  );
+  const effectiveMonitoringCfg = useMemo(
+    () => applyMonitoringOverride(monitoringCfg, monitoringOverride),
+    [monitoringCfg, monitoringOverride],
+  );
+  const isMonitoringConfigured = Boolean(
+    effectiveMonitoringCfg.enabled &&
+    effectiveMonitoringCfg.baseUrl &&
+    effectiveMonitoringCfg.dashboards?.gateway,
+  );
+  const [isMonitoringFormOpen, setMonitoringFormOpen] = useState(!isMonitoringConfigured);
+  const [monitoringDraft, setMonitoringDraft] = useState<MonitoringDraft>(() =>
+    draftFromMonitoringConfig(effectiveMonitoringCfg),
+  );
+  const gatewayDashboardUrl = buildDashboardUrl(effectiveMonitoringCfg, "gateway", {
+    from: "now-1h",
+    to: "now",
+    refresh: "30s",
+    vars: effectiveMonitoringCfg.datasource
+      ? { datasource: effectiveMonitoringCfg.datasource }
+      : undefined,
+  });
+  const gatewayExploreUrl = buildExploreUrl(
+    effectiveMonitoringCfg,
+    "sum(rate(lumen_upstream_requests_total[1m]))",
+  );
 
   const statQueries = useQueries({
     queries: STAT_ITEMS.map((item) => ({
@@ -59,12 +146,17 @@ export function GatewayOverviewPage() {
     refetchInterval: 15_000, // auto-refresh every 15s
   });
 
-  const hasErrors = statQueries.some((q) => q.isError) || historyQuery.isError || schemaQuery.isError;
+  const hasErrors =
+    statQueries.some((q) => q.isError) || historyQuery.isError || schemaQuery.isError;
 
   const stats = statsQuery.data;
   const errorRate = stats ? stats.error_rate.toFixed(1) : "—";
   const errorColor = stats
-    ? stats.error_rate >= 5 ? "text-danger" : stats.error_rate >= 1 ? "text-warning" : "text-success"
+    ? stats.error_rate >= 5
+      ? "text-danger"
+      : stats.error_rate >= 1
+        ? "text-warning"
+        : "text-success"
     : "text-fg";
 
   return (
@@ -89,6 +181,59 @@ export function GatewayOverviewPage() {
         }
       />
 
+      {/* ── Control-plane connection ────────────────────────────────────── */}
+      <div>
+        <div className="mb-3 flex items-center justify-between">
+          <div>
+            <div className="text-sm font-semibold text-fg">控制面连接</div>
+            <div className="text-xs text-fg-subtle">
+              Admin API · {gatewayCfg.baseUrl || "未配置"} · Gateway Etcd{" "}
+              {gatewayCfg.etcdUrl || "未配置"}
+            </div>
+          </div>
+          <Button
+            type="button"
+            size="sm"
+            variant="secondary"
+            onClick={() => setControlPlaneFormOpen((open) => !open)}
+          >
+            {isControlPlaneFormOpen ? "收起配置" : "配置连接"}
+          </Button>
+        </div>
+
+        {isControlPlaneFormOpen ? (
+          <ControlPlaneConfigPanel
+            draft={controlPlaneDraft}
+            hasOverride={Boolean(controlPlaneOverride)}
+            onChange={setControlPlaneDraft}
+            onReset={() => {
+              clearGatewayControlPlaneOverride();
+              setControlPlaneOverride(null);
+              setControlPlaneDraft(draftFromGatewayConfig(runtimeConfig.modules.gateway));
+              window.location.reload();
+            }}
+            onSubmit={(event) => {
+              event.preventDefault();
+              const next = controlPlaneOverrideFromDraft(controlPlaneDraft);
+              writeGatewayControlPlaneOverride(next);
+              setControlPlaneOverride(next);
+              updateConfig((config) => ({
+                ...config,
+                modules: {
+                  ...config.modules,
+                  gateway: {
+                    ...config.modules.gateway,
+                    ...next,
+                  },
+                },
+              }));
+              setControlPlaneFormOpen(false);
+              void queryClient.invalidateQueries({ queryKey: ["gateway"] });
+            }}
+          />
+        ) : null}
+      </div>
+
       {/* ── Resource counts ──────────────────────────────────────────────── */}
       <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
         {STAT_ITEMS.map((item, index) => {
@@ -96,7 +241,9 @@ export function GatewayOverviewPage() {
           return (
             <Card key={item.kind}>
               <CardBody className="space-y-2">
-                <div className="text-[11px] uppercase tracking-wider text-fg-subtle">{item.label}</div>
+                <div className="text-[11px] uppercase tracking-wider text-fg-subtle">
+                  {item.label}
+                </div>
                 <div className="font-mono text-2xl text-fg">
                   {query.isLoading ? "…" : (query.data?.total ?? "—")}
                 </div>
@@ -116,9 +263,9 @@ export function GatewayOverviewPage() {
             <div className="text-sm font-semibold text-fg">实时流量</div>
             <div className="text-xs text-fg-subtle">来自网关 /control/stats，每 15 秒自动刷新</div>
           </div>
-          {monitoringCfg.enabled && (
+          {isMonitoringConfigured && (
             <a
-              href={exploreUrl('sum(rate(lumen_upstream_requests_total[1m]))')}
+              href={gatewayExploreUrl}
               target="_blank"
               rel="noopener noreferrer"
               className="text-xs text-accent hover:underline"
@@ -131,39 +278,67 @@ export function GatewayOverviewPage() {
         {statsQuery.isLoading ? (
           <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
             {Array.from({ length: 4 }).map((_, i) => (
-              <div key={i} className="h-20 animate-pulse rounded border border-border bg-bg-subtle" />
+              <div
+                key={i}
+                className="h-20 animate-pulse rounded border border-border bg-bg-subtle"
+              />
             ))}
           </div>
         ) : stats ? (
           <>
             <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-              <MetricTile label="总请求数" value={stats.requests_total.toLocaleString()} sub="自上次重启累计" />
-              <MetricTile label="4xx 错误" value={stats.errors_4xx.toLocaleString()} sub="客户端错误" color={stats.errors_4xx > 0 ? "text-warning" : "text-fg"} />
-              <MetricTile label="5xx 错误" value={stats.errors_5xx.toLocaleString()} sub="服务端错误" color={stats.errors_5xx > 0 ? "text-danger" : "text-fg"} />
-              <MetricTile label="错误率" value={`${errorRate}%`} sub="4xx + 5xx / 总计" color={errorColor} />
+              <MetricTile
+                label="总请求数"
+                value={stats.requests_total.toLocaleString()}
+                sub="自上次重启累计"
+              />
+              <MetricTile
+                label="4xx 错误"
+                value={stats.errors_4xx.toLocaleString()}
+                sub="客户端错误"
+                color={stats.errors_4xx > 0 ? "text-warning" : "text-fg"}
+              />
+              <MetricTile
+                label="5xx 错误"
+                value={stats.errors_5xx.toLocaleString()}
+                sub="服务端错误"
+                color={stats.errors_5xx > 0 ? "text-danger" : "text-fg"}
+              />
+              <MetricTile
+                label="错误率"
+                value={`${errorRate}%`}
+                sub="4xx + 5xx / 总计"
+                color={errorColor}
+              />
             </div>
 
             {stats.top_routes.length > 0 && (
-              <div className="mt-3 rounded border border-border overflow-hidden">
+              <div className="mt-3 overflow-hidden rounded border border-border">
                 <div className="bg-bg-subtle px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-fg-subtle">
                   Top Routes（按请求量）
                 </div>
                 <div className="divide-y divide-border">
                   {stats.top_routes.map((r) => {
-                    const pct = stats.requests_total > 0
-                      ? Math.round((r.requests / stats.requests_total) * 100)
-                      : 0;
+                    const pct =
+                      stats.requests_total > 0
+                        ? Math.round((r.requests / stats.requests_total) * 100)
+                        : 0;
                     return (
                       <div key={r.route_id} className="flex items-center gap-3 px-3 py-2">
-                        <span className="font-mono text-xs text-fg w-40 truncate">{r.route_id}</span>
-                        <div className="flex-1 h-1.5 rounded-full bg-border overflow-hidden">
-                          <div className="h-full rounded-full bg-accent" style={{ width: `${pct}%` }} />
+                        <span className="w-40 truncate font-mono text-xs text-fg">
+                          {r.route_id}
+                        </span>
+                        <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-border">
+                          <div
+                            className="h-full rounded-full bg-accent"
+                            style={{ width: `${pct}%` }}
+                          />
                         </div>
-                        <span className="font-mono text-xs text-fg w-16 text-right">
+                        <span className="w-16 text-right font-mono text-xs text-fg">
                           {r.requests.toLocaleString()}
                         </span>
                         {r.errors > 0 && (
-                          <span className="text-[11px] text-danger w-16 text-right">
+                          <span className="w-16 text-right text-[11px] text-danger">
                             {r.errors} err
                           </span>
                         )}
@@ -187,33 +362,73 @@ export function GatewayOverviewPage() {
           <div>
             <div className="text-sm font-semibold text-fg">Grafana 监控面板</div>
             <div className="text-xs text-fg-subtle">
-              {monitoringCfg.enabled
-                ? "实时指标 · 自动刷新 30s"
-                : "未配置 — 在 config.json 中启用 monitoring 后显示"}
+              {isMonitoringConfigured
+                ? `实时指标 · 自动刷新 30s · ${effectiveMonitoringCfg.datasource || "prometheus"}`
+                : "未配置数据源，先填写 Grafana 地址和 Gateway Dashboard UID"}
             </div>
           </div>
-          {monitoringCfg.enabled && (
-            <a
-              href={monitoringCfg.baseUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-xs font-medium text-accent hover:underline"
+          <div className="flex items-center gap-2">
+            {isMonitoringConfigured && (
+              <a
+                href={effectiveMonitoringCfg.baseUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-xs font-medium text-accent hover:underline"
+              >
+                打开 Grafana →
+              </a>
+            )}
+            <Button
+              type="button"
+              size="sm"
+              variant="secondary"
+              onClick={() => setMonitoringFormOpen((open) => !open)}
             >
-              在新标签页打开 Grafana →
-            </a>
-          )}
+              {isMonitoringFormOpen ? "收起配置" : "配置数据源"}
+            </Button>
+          </div>
         </div>
 
-        <GrafanaPanel
-          src={dashboardUrl("gateway", { from: "now-1h", to: "now", refresh: "30s" })}
-          title="Lumen Gateway 监控面板"
-          height={680}
-          placeholder={
-            monitoringCfg.enabled
-              ? "请在 config.json 的 monitoring.dashboards.gateway 中填写 Grafana Dashboard UID"
-              : "在 config.json 中设置 modules.monitoring.enabled=true 并配置 baseUrl 和 dashboards.gateway 后，监控面板将显示在这里。\n\n运行 cd lumen-gateway && docker compose up -d 可一键启动 Grafana（UID 已预配置为 lumen-gateway）。"
-          }
-        />
+        {isMonitoringFormOpen || !isMonitoringConfigured ? (
+          <MonitoringConfigPanel
+            draft={monitoringDraft}
+            hasOverride={Boolean(monitoringOverride)}
+            isConfigured={isMonitoringConfigured}
+            onChange={setMonitoringDraft}
+            onReset={() => {
+              clearMonitoringOverride();
+              setMonitoringOverride(null);
+              setMonitoringDraft(draftFromMonitoringConfig(monitoringCfg));
+              setMonitoringFormOpen(!(monitoringCfg.enabled && monitoringCfg.dashboards?.gateway));
+            }}
+            onSubmit={(event) => {
+              event.preventDefault();
+              const next = overrideFromDraft(monitoringDraft);
+              writeMonitoringOverride(next);
+              setMonitoringOverride(next);
+              setMonitoringFormOpen(false);
+            }}
+          />
+        ) : null}
+
+        {isMonitoringConfigured ? (
+          <>
+            <a
+              href={effectiveMonitoringCfg.baseUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="sr-only"
+            >
+              在新标签页打开 Grafana
+            </a>
+            <GrafanaPanel
+              src={gatewayDashboardUrl}
+              title="Lumen Gateway 监控面板"
+              height={680}
+              className={isMonitoringFormOpen ? "mt-3" : undefined}
+            />
+          </>
+        ) : null}
       </div>
 
       {/* ── History + Schema ─────────────────────────────────────────────── */}
@@ -224,7 +439,10 @@ export function GatewayOverviewPage() {
             {historyQuery.isLoading ? (
               <div className="space-y-3">
                 {Array.from({ length: 4 }).map((_, index) => (
-                  <div key={index} className="h-14 animate-pulse rounded border border-border bg-bg-subtle" />
+                  <div
+                    key={index}
+                    className="h-14 animate-pulse rounded border border-border bg-bg-subtle"
+                  />
                 ))}
               </div>
             ) : historyQuery.data?.list.length ? (
@@ -242,15 +460,14 @@ export function GatewayOverviewPage() {
                         {item.rollback_of ? ` · rollback of ${item.rollback_of}` : ""}
                       </div>
                     </div>
-                    <div className="text-xs text-fg-subtle">{formatRelativeTime(item.created_at)}</div>
+                    <div className="text-xs text-fg-subtle">
+                      {formatRelativeTime(item.created_at)}
+                    </div>
                   </div>
                 ))}
               </div>
             ) : (
-              <EmptyState
-                title="暂无历史记录"
-                description="应用 bundle 或回滚操作后会自动记录。"
-              />
+              <EmptyState title="暂无历史记录" description="应用 bundle 或回滚操作后会自动记录。" />
             )}
           </CardBody>
         </Card>
@@ -289,7 +506,7 @@ export function GatewayOverviewPage() {
                     ))}
                   </div>
                 </div>
-                <div className="rounded border border-border bg-bg-subtle/40 p-3 text-xs text-fg-muted space-y-0.5">
+                <div className="space-y-0.5 rounded border border-border bg-bg-subtle/40 p-3 text-xs text-fg-muted">
                   <div>bundle 格式: {schemaQuery.data.capabilities.bundle_formats.join(", ")}</div>
                   <div>导出格式: {schemaQuery.data.capabilities.export_formats.join(", ")}</div>
                   <div>历史保留: {schemaQuery.data.capabilities.history_limit} 条</div>
@@ -305,10 +522,262 @@ export function GatewayOverviewPage() {
       {hasErrors && (
         <Card>
           <CardBody className="text-sm text-danger">
-            部分查询失败，请检查模块 baseUrl、API Key 和服务健康状态。
+            部分查询失败，请检查控制面连接、API Key、Etcd 配置和服务健康状态。
           </CardBody>
         </Card>
       )}
     </div>
   );
+}
+
+function ControlPlaneConfigPanel({
+  draft,
+  hasOverride,
+  onChange,
+  onReset,
+  onSubmit,
+}: {
+  draft: ControlPlaneDraft;
+  hasOverride: boolean;
+  onChange: (draft: ControlPlaneDraft) => void;
+  onReset: () => void;
+  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+}) {
+  return (
+    <form onSubmit={onSubmit} className="rounded border border-border bg-bg-elevated p-4 shadow-sm">
+      <div className="grid gap-3 lg:grid-cols-[1.2fr_1fr_1fr_0.55fr]">
+        <label className="space-y-1.5">
+          <span className="text-xs font-medium text-fg-muted">Gateway Admin API URL</span>
+          <input
+            type="url"
+            required
+            value={draft.baseUrl}
+            onChange={(event) => onChange({ ...draft, baseUrl: event.target.value })}
+            placeholder="http://localhost:18080"
+            className="h-9 w-full rounded border border-border bg-bg px-3 text-sm text-fg outline-none placeholder:text-fg-subtle focus:border-accent"
+          />
+        </label>
+        <label className="space-y-1.5">
+          <span className="text-xs font-medium text-fg-muted">API Key</span>
+          <input
+            type="password"
+            value={draft.apiKey}
+            onChange={(event) => onChange({ ...draft, apiKey: event.target.value })}
+            placeholder="local-dev-admin-key"
+            className="h-9 w-full rounded border border-border bg-bg px-3 text-sm text-fg outline-none placeholder:text-fg-subtle focus:border-accent"
+          />
+        </label>
+        <label className="space-y-1.5">
+          <span className="text-xs font-medium text-fg-muted">Gateway Etcd Endpoint</span>
+          <input
+            type="text"
+            value={draft.etcdUrl}
+            onChange={(event) => onChange({ ...draft, etcdUrl: event.target.value })}
+            placeholder="http://localhost:2379"
+            className="h-9 w-full rounded border border-border bg-bg px-3 text-sm text-fg outline-none placeholder:text-fg-subtle focus:border-accent"
+          />
+        </label>
+        <label className="space-y-1.5">
+          <span className="text-xs font-medium text-fg-muted">Prefix</span>
+          <input
+            type="text"
+            value={draft.etcdPrefix}
+            onChange={(event) => onChange({ ...draft, etcdPrefix: event.target.value })}
+            placeholder="/apisix"
+            className="h-9 w-full rounded border border-border bg-bg px-3 text-sm text-fg outline-none placeholder:text-fg-subtle focus:border-accent"
+          />
+        </label>
+      </div>
+      <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+        <div className="text-xs text-fg-subtle">
+          {hasOverride ? "正在使用此浏览器保存的控制面连接配置。" : "正在使用 /config.json 中的控制面连接配置。"}
+        </div>
+        <div className="flex items-center gap-2">
+          {hasOverride ? (
+            <Button type="button" size="sm" variant="ghost" onClick={onReset}>
+              恢复默认
+            </Button>
+          ) : null}
+          <Button type="submit" size="sm" variant="primary">
+            保存并应用
+          </Button>
+        </div>
+      </div>
+    </form>
+  );
+}
+
+function MonitoringConfigPanel({
+  draft,
+  hasOverride,
+  isConfigured,
+  onChange,
+  onReset,
+  onSubmit,
+}: {
+  draft: MonitoringDraft;
+  hasOverride: boolean;
+  isConfigured: boolean;
+  onChange: (draft: MonitoringDraft) => void;
+  onReset: () => void;
+  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+}) {
+  return (
+    <form onSubmit={onSubmit} className="rounded border border-border bg-bg-elevated p-4 shadow-sm">
+      <div className="grid gap-3 lg:grid-cols-[1.2fr_1fr_0.9fr_0.45fr]">
+        <label className="space-y-1.5">
+          <span className="text-xs font-medium text-fg-muted">Grafana URL</span>
+          <input
+            type="url"
+            required
+            value={draft.baseUrl}
+            onChange={(event) => onChange({ ...draft, baseUrl: event.target.value })}
+            placeholder="http://localhost:3000"
+            className="h-9 w-full rounded border border-border bg-bg px-3 text-sm text-fg outline-none placeholder:text-fg-subtle focus:border-accent"
+          />
+        </label>
+        <label className="space-y-1.5">
+          <span className="text-xs font-medium text-fg-muted">Gateway Dashboard UID</span>
+          <input
+            type="text"
+            required
+            value={draft.dashboardUid}
+            onChange={(event) => onChange({ ...draft, dashboardUid: event.target.value })}
+            placeholder="lumen-gateway"
+            className="h-9 w-full rounded border border-border bg-bg px-3 text-sm text-fg outline-none placeholder:text-fg-subtle focus:border-accent"
+          />
+        </label>
+        <label className="space-y-1.5">
+          <span className="text-xs font-medium text-fg-muted">Datasource</span>
+          <input
+            type="text"
+            value={draft.datasource}
+            onChange={(event) => onChange({ ...draft, datasource: event.target.value })}
+            placeholder="prometheus"
+            className="h-9 w-full rounded border border-border bg-bg px-3 text-sm text-fg outline-none placeholder:text-fg-subtle focus:border-accent"
+          />
+        </label>
+        <label className="space-y-1.5">
+          <span className="text-xs font-medium text-fg-muted">Org</span>
+          <input
+            type="number"
+            min="1"
+            value={draft.orgId}
+            onChange={(event) => onChange({ ...draft, orgId: event.target.value })}
+            placeholder="1"
+            className="h-9 w-full rounded border border-border bg-bg px-3 text-sm text-fg outline-none placeholder:text-fg-subtle focus:border-accent"
+          />
+        </label>
+      </div>
+      <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+        <div className="text-xs text-fg-subtle">
+          {isConfigured
+            ? hasOverride
+              ? "正在使用此浏览器保存的监控配置。"
+              : "正在使用 /config.json 中的监控配置。"
+            : "保存后会立即在本页显示监控面板。"}
+        </div>
+        <div className="flex items-center gap-2">
+          {hasOverride ? (
+            <Button type="button" size="sm" variant="ghost" onClick={onReset}>
+              恢复默认
+            </Button>
+          ) : null}
+          <Button type="submit" size="sm" variant="primary">
+            保存并预览
+          </Button>
+        </div>
+      </div>
+    </form>
+  );
+}
+
+function applyMonitoringOverride(
+  cfg: MonitoringConfig,
+  override: MonitoringOverride | null,
+): MonitoringConfig {
+  if (!override) return cfg;
+  return {
+    ...cfg,
+    enabled: true,
+    baseUrl: override.baseUrl,
+    orgId: override.orgId ?? cfg.orgId,
+    datasource: override.datasource || cfg.datasource || "prometheus",
+    dashboards: {
+      ...cfg.dashboards,
+      gateway: override.dashboardUid,
+    },
+  };
+}
+
+function draftFromMonitoringConfig(cfg: MonitoringConfig): MonitoringDraft {
+  return {
+    baseUrl: cfg.baseUrl || "http://localhost:3000",
+    dashboardUid: cfg.dashboards?.gateway || "lumen-gateway",
+    datasource: cfg.datasource || "prometheus",
+    orgId: cfg.orgId ? String(cfg.orgId) : "1",
+  };
+}
+
+function overrideFromDraft(draft: MonitoringDraft): MonitoringOverride {
+  const orgId = Number.parseInt(draft.orgId, 10);
+  return {
+    baseUrl: draft.baseUrl.trim().replace(/\/+$/, ""),
+    dashboardUid: draft.dashboardUid.trim(),
+    datasource: draft.datasource.trim() || "prometheus",
+    ...(Number.isFinite(orgId) && orgId > 0 ? { orgId } : {}),
+  };
+}
+
+function readMonitoringOverride(): MonitoringOverride | null {
+  if (typeof localStorage === "undefined") return null;
+  const raw = localStorage.getItem(MONITORING_OVERRIDE_KEY);
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as Partial<MonitoringOverride>;
+    if (!parsed.baseUrl || !parsed.dashboardUid) return null;
+    return {
+      baseUrl: parsed.baseUrl,
+      dashboardUid: parsed.dashboardUid,
+      datasource: parsed.datasource || "prometheus",
+      ...(parsed.orgId ? { orgId: parsed.orgId } : {}),
+    };
+  } catch {
+    return null;
+  }
+}
+
+function writeMonitoringOverride(value: MonitoringOverride) {
+  localStorage.setItem(MONITORING_OVERRIDE_KEY, JSON.stringify(value));
+}
+
+function clearMonitoringOverride() {
+  localStorage.removeItem(MONITORING_OVERRIDE_KEY);
+}
+
+function draftFromGatewayConfig(cfg: ModuleConfig): ControlPlaneDraft {
+  return {
+    baseUrl: cfg.baseUrl || "http://localhost:18080",
+    apiKey: cfg.apiKey || "",
+    etcdUrl: cfg.etcdUrl || "http://localhost:2379",
+    etcdPrefix: cfg.etcdPrefix || "/apisix",
+  };
+}
+
+function controlPlaneOverrideFromDraft(draft: ControlPlaneDraft): GatewayControlPlaneOverride {
+  const apiKey = draft.apiKey.trim();
+  const etcdUrl = draft.etcdUrl.trim().replace(/\/+$/, "");
+  const etcdPrefix = normalizeEtcdPrefix(draft.etcdPrefix);
+  return {
+    baseUrl: draft.baseUrl.trim().replace(/\/+$/, ""),
+    ...(apiKey ? { apiKey } : {}),
+    ...(etcdUrl ? { etcdUrl } : {}),
+    ...(etcdPrefix ? { etcdPrefix } : {}),
+  };
+}
+
+function normalizeEtcdPrefix(prefix: string): string {
+  const trimmed = prefix.trim();
+  if (!trimmed) return "";
+  return trimmed.startsWith("/") ? trimmed : `/${trimmed}`;
 }

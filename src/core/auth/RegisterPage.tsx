@@ -1,72 +1,63 @@
 import { useState, type FormEvent } from "react";
-import { Link, Navigate, useSearchParams } from "react-router-dom";
-import { Activity, LogIn } from "lucide-react";
+import { Link, Navigate, useNavigate } from "react-router-dom";
+import { Activity, UserPlus } from "lucide-react";
 
 import { Button } from "@shared/ui/Button";
 
-import { useAuthStrategy, useSession } from "./AuthContext";
+import { useSession } from "./AuthContext";
 import { useConfig } from "@core/config/ConfigContext";
 
-function isSafeReturnTo(url: string, issuer: string | undefined): boolean {
-  if (!url) return false;
-  try {
-    const parsed = new URL(url);
-    const allowed = [window.location.origin];
-    if (issuer) allowed.push(new URL(issuer).origin);
-    return allowed.includes(parsed.origin);
-  } catch {
-    return url.startsWith("/");
-  }
-}
-
-export function LoginPage() {
+export function RegisterPage() {
   const session = useSession();
-  const auth = useAuthStrategy();
   const config = useConfig();
-  const [searchParams] = useSearchParams();
-  const returnTo = searchParams.get("return_to") ?? "";
-
-  const [username, setUsername] = useState("");
+  const navigate = useNavigate();
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [name, setName] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
   if (session.status === "authenticated") {
-    if (returnTo && isSafeReturnTo(returnTo, config.auth.issuer)) {
-      window.location.href = returnTo;
-      return null;
-    }
     return <Navigate to="/" replace />;
   }
+
+  const baseUrl = (config.auth.issuer ?? "").replace(/\/+$/, "");
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     setLoading(true);
     setError("");
 
-    const result = await auth.login(username, password);
-    if (!result.ok) {
-      setError(result.error ?? "Login failed");
+    try {
+      const res = await fetch(`${baseUrl}/auth/register`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password, name }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.message ?? "Registration failed");
+        setLoading(false);
+        return;
+      }
+      navigate("/verify-email", { state: { email } });
+    } catch (err) {
+      setError((err as Error).message);
       setLoading(false);
-      return;
-    }
-    if (returnTo && isSafeReturnTo(returnTo, config.auth.issuer)) {
-      window.location.href = returnTo;
-      return;
     }
   }
 
   return (
     <div className="flex h-screen w-screen items-center justify-center bg-bg">
-      <div className="w-full max-w-md px-4">
+      <div className="w-full max-w-sm">
         <div className="mb-8 flex flex-col items-center gap-3">
           <div className="grid h-12 w-12 place-items-center rounded-xl bg-accent text-accent-fg">
             <Activity className="h-6 w-6" />
           </div>
           <div>
-            <h1 className="text-center text-xl font-bold text-fg">Lumen Admin</h1>
+            <h1 className="text-center text-xl font-bold text-fg">Create Account</h1>
             <p className="mt-1 text-center text-sm text-fg-muted">
-              Sign in to manage your API gateway
+              Register for Lumen Admin
             </p>
           </div>
         </div>
@@ -77,17 +68,30 @@ export function LoginPage() {
         >
           <div className="space-y-4">
             <div>
-              <label htmlFor="username" className="mb-1.5 block text-sm font-medium text-fg">
+              <label htmlFor="name" className="mb-1.5 block text-sm font-medium text-fg">
+                Name
+              </label>
+              <input
+                id="name"
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="Your name"
+                autoFocus
+                className="h-9 w-full rounded border border-border bg-bg px-3 text-sm text-fg outline-none placeholder:text-fg-subtle focus:border-accent"
+              />
+            </div>
+            <div>
+              <label htmlFor="email" className="mb-1.5 block text-sm font-medium text-fg">
                 Email
               </label>
               <input
-                id="username"
+                id="email"
                 type="email"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
                 placeholder="you@example.com"
                 autoComplete="email"
-                autoFocus
                 className="h-9 w-full rounded border border-border bg-bg px-3 text-sm text-fg outline-none placeholder:text-fg-subtle focus:border-accent"
               />
             </div>
@@ -100,8 +104,8 @@ export function LoginPage() {
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••"
-                autoComplete="current-password"
+                placeholder="At least 8 characters"
+                autoComplete="new-password"
                 className="h-9 w-full rounded border border-border bg-bg px-3 text-sm text-fg outline-none placeholder:text-fg-subtle focus:border-accent"
               />
             </div>
@@ -114,17 +118,17 @@ export function LoginPage() {
           <Button
             type="submit"
             variant="primary"
-            disabled={loading || !username || !password}
+            disabled={loading || !email || !password}
             className="mt-5 w-full justify-center"
           >
-            <LogIn className="h-4 w-4" />
-            {loading ? "Signing in…" : "Sign in"}
+            <UserPlus className="h-4 w-4" />
+            {loading ? "Registering…" : "Register"}
           </Button>
 
           <p className="mt-4 text-center text-sm text-fg-muted">
-            Don&apos;t have an account?{" "}
-            <Link to="/register" className="text-accent hover:underline">
-              Register
+            Already have an account?{" "}
+            <Link to="/login" className="text-accent hover:underline">
+              Sign in
             </Link>
           </p>
         </form>

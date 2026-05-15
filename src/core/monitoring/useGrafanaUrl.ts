@@ -46,14 +46,12 @@ export function useGrafanaUrl() {
   const cfg = modules.monitoring;
 
   const dashboardUrl = useCallback(
-    (key: DashboardKey, opts: DashboardUrlOpts = {}): string =>
-      buildDashboardUrl(cfg, key, opts),
+    (key: DashboardKey, opts: DashboardUrlOpts = {}): string => buildDashboardUrl(cfg, key, opts),
     [cfg],
   );
 
   const panelUrl = useCallback(
-    (key: DashboardKey, opts: PanelUrlOpts): string =>
-      buildPanelUrl(cfg, key, opts),
+    (key: DashboardKey, opts: PanelUrlOpts): string => buildPanelUrl(cfg, key, opts),
     [cfg],
   );
 
@@ -65,18 +63,7 @@ export function useGrafanaUrl() {
   }, [cfg]);
 
   const exploreUrl = useCallback(
-    (promQL: string, range: TimeRange = {}): string => {
-      if (!cfg.enabled || !cfg.baseUrl) return "";
-      const left = {
-        datasource: "prometheus",
-        queries: [{ refId: "A", expr: promQL }],
-        range: { from: range.from ?? "now-1h", to: range.to ?? "now" },
-      };
-      const u = new URL("/explore", cfg.baseUrl);
-      if (cfg.orgId) u.searchParams.set("orgId", String(cfg.orgId));
-      u.searchParams.set("left", JSON.stringify(left));
-      return u.toString();
-    },
+    (promQL: string, range: TimeRange = {}): string => buildExploreUrl(cfg, promQL, range),
     [cfg],
   );
 
@@ -108,20 +95,30 @@ export function buildPanelUrl(
   if (!cfg.enabled || !cfg.baseUrl || !uid) return "";
 
   const slug = opts.slug ?? `lumen-${key}`;
-  const u = new URL(
-    `/d-solo/${encodeURIComponent(uid)}/${encodeURIComponent(slug)}`,
-    cfg.baseUrl,
-  );
+  const u = new URL(`/d-solo/${encodeURIComponent(uid)}/${encodeURIComponent(slug)}`, cfg.baseUrl);
   u.searchParams.set("panelId", String(opts.panelId));
   applyCommonParams(u, cfg, opts);
   return u.toString();
 }
 
-function applyCommonParams(
-  u: URL,
+export function buildExploreUrl(
   cfg: MonitoringConfig,
-  opts: DashboardUrlOpts,
-): void {
+  promQL: string,
+  range: TimeRange = {},
+): string {
+  if (!cfg.enabled || !cfg.baseUrl) return "";
+  const left = {
+    datasource: cfg.datasource || "prometheus",
+    queries: [{ refId: "A", expr: promQL }],
+    range: { from: range.from ?? "now-1h", to: range.to ?? "now" },
+  };
+  const u = new URL("/explore", cfg.baseUrl);
+  if (cfg.orgId) u.searchParams.set("orgId", String(cfg.orgId));
+  u.searchParams.set("left", JSON.stringify(left));
+  return u.toString();
+}
+
+function applyCommonParams(u: URL, cfg: MonitoringConfig, opts: DashboardUrlOpts): void {
   if (cfg.orgId) u.searchParams.set("orgId", String(cfg.orgId));
   u.searchParams.set("from", opts.from ?? "now-1h");
   u.searchParams.set("to", opts.to ?? "now");
@@ -140,9 +137,7 @@ function applyCommonParams(
   }
 }
 
-function resolveTheme(
-  configured: MonitoringConfig["theme"],
-): "light" | "dark" | undefined {
+function resolveTheme(configured: MonitoringConfig["theme"]): "light" | "dark" | undefined {
   if (configured === "light" || configured === "dark") return configured;
   if (configured === "auto" || !configured) {
     if (typeof document !== "undefined") {

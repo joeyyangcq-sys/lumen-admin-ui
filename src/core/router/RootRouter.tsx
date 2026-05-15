@@ -10,6 +10,7 @@ import { SettingsPage } from "@core/app/SettingsPage";
 import { LoginPage } from "@core/auth/LoginPage";
 import { RegisterPage } from "@core/auth/RegisterPage";
 import { VerifyEmailPage } from "@core/auth/VerifyEmailPage";
+import { ConsentPage } from "@core/auth/ConsentPage";
 import { RequireAuth } from "@core/auth/RequireAuth";
 import { useModuleVisibility } from "@core/auth/localAuthStrategy";
 
@@ -37,6 +38,7 @@ export function RootRouter() {
       { path: "/login", Component: LoginPage },
       { path: "/register", Component: RegisterPage },
       { path: "/verify-email", Component: VerifyEmailPage },
+      { path: "/oauth/consent", Component: ConsentPage },
       {
         path: "/",
         element: (
