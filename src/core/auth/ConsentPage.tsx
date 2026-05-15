@@ -4,6 +4,7 @@ import { Activity, CheckCircle, AlertTriangle, XCircle, Shield } from "lucide-re
 
 import { Button } from "@shared/ui/Button";
 import { Badge } from "@shared/ui/Badge";
+import { getCurrentCSRFToken } from "./oauthAuthStrategy";
 
 interface ScopeInfo {
   value: string;
@@ -24,7 +25,10 @@ interface ConsentDetails {
   consent_required: boolean;
 }
 
-const RISK_META: Record<string, { icon: typeof CheckCircle; tone: "success" | "warning" | "danger"; label: string }> = {
+const RISK_META: Record<
+  string,
+  { icon: typeof CheckCircle; tone: "success" | "warning" | "danger"; label: string }
+> = {
   normal: { icon: CheckCircle, tone: "success", label: "Low" },
   medium: { icon: AlertTriangle, tone: "warning", label: "Medium" },
   high: { icon: XCircle, tone: "danger", label: "High" },
@@ -80,19 +84,24 @@ export function ConsentPage() {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
 
-  const redirectToAuthorize = useCallback((scopeValue: string) => {
-    const authorizeUrl = `${issuer}/oauth/authorize?` + new URLSearchParams({
-      response_type: "code",
-      client_id: clientId,
-      redirect_uri: redirectUri,
-      scope: scopeValue,
-      state,
-      resource,
-      code_challenge: codeChallenge,
-      code_challenge_method: codeChallengeMethod,
-    }).toString();
-    window.location.href = authorizeUrl;
-  }, [issuer, clientId, redirectUri, state, resource, codeChallenge, codeChallengeMethod]);
+  const redirectToAuthorize = useCallback(
+    (scopeValue: string) => {
+      const authorizeUrl =
+        `${issuer}/oauth/authorize?` +
+        new URLSearchParams({
+          response_type: "code",
+          client_id: clientId,
+          redirect_uri: redirectUri,
+          scope: scopeValue,
+          state,
+          resource,
+          code_challenge: codeChallenge,
+          code_challenge_method: codeChallengeMethod,
+        }).toString();
+      window.location.href = authorizeUrl;
+    },
+    [issuer, clientId, redirectUri, state, resource, codeChallenge, codeChallengeMethod],
+  );
 
   useEffect(() => {
     if (!issuer || !clientId) {
@@ -101,7 +110,12 @@ export function ConsentPage() {
       return;
     }
 
-    const qs = new URLSearchParams({ client_id: clientId, redirect_uri: redirectUri, scope, resource });
+    const qs = new URLSearchParams({
+      client_id: clientId,
+      redirect_uri: redirectUri,
+      scope,
+      resource,
+    });
 
     fetch(`${issuer}/oauth/consent/request?${qs}`, { credentials: "include" })
       .then(async (res) => {
@@ -131,7 +145,7 @@ export function ConsentPage() {
     setSubmitting(true);
     setError("");
     try {
-      const csrfToken = localStorage.getItem("csrf_token") ?? "";
+      const csrfToken = getCurrentCSRFToken();
       if (!csrfToken) {
         const returnTo = window.location.href;
         window.location.href = `/login?return_to=${encodeURIComponent(returnTo)}`;
@@ -204,7 +218,9 @@ export function ConsentPage() {
           )}
 
           {loading && (
-            <p className="py-8 text-center text-sm text-fg-muted">Loading authorization details...</p>
+            <p className="py-8 text-center text-sm text-fg-muted">
+              Loading authorization details...
+            </p>
           )}
 
           {details && !loading && (
@@ -219,7 +235,9 @@ export function ConsentPage() {
                     {(details.client_name || details.client_id).charAt(0).toUpperCase()}
                   </div>
                   <div>
-                    <p className="font-semibold text-fg">{details.client_name || details.client_id}</p>
+                    <p className="font-semibold text-fg">
+                      {details.client_name || details.client_id}
+                    </p>
                     <TrustBadge level={details.trust_level} />
                   </div>
                 </div>
@@ -241,7 +259,10 @@ export function ConsentPage() {
               {details.warnings.length > 0 && (
                 <div className="space-y-2">
                   {details.warnings.map((w, i) => (
-                    <div key={i} className="flex items-start gap-2 rounded bg-warning/10 px-3 py-2 text-xs text-warning">
+                    <div
+                      key={i}
+                      className="flex items-start gap-2 rounded bg-warning/10 px-3 py-2 text-xs text-warning"
+                    >
                       <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
                       <span>{w}</span>
                     </div>
@@ -253,7 +274,7 @@ export function ConsentPage() {
               <div>
                 <div className="mb-2 flex items-center justify-between gap-2">
                   <p className="text-[11px] font-semibold uppercase tracking-wider text-fg-subtle">
-                  Requested Permissions
+                    Requested Permissions
                   </p>
                   <button
                     type="button"
@@ -269,7 +290,10 @@ export function ConsentPage() {
                     const Icon = risk.icon;
                     const checked = selectedScopes.includes(s.value);
                     return (
-                      <div key={s.value} className="flex gap-3 rounded border border-border bg-bg px-3 py-2.5">
+                      <div
+                        key={s.value}
+                        className="flex gap-3 rounded border border-border bg-bg px-3 py-2.5"
+                      >
                         <input
                           type="checkbox"
                           checked={checked}
@@ -285,7 +309,9 @@ export function ConsentPage() {
                           {s.description && (
                             <p className="mt-0.5 text-xs text-fg-muted">{s.description}</p>
                           )}
-                          <code className="mt-1 inline-block text-[10px] text-fg-subtle">{s.value}</code>
+                          <code className="mt-1 inline-block text-[10px] text-fg-subtle">
+                            {s.value}
+                          </code>
                         </div>
                       </div>
                     );
@@ -305,11 +331,7 @@ export function ConsentPage() {
 
               {/* Buttons */}
               <div className="flex gap-3 pt-1">
-                <Button
-                  variant="secondary"
-                  onClick={handleDeny}
-                  className="flex-1 justify-center"
-                >
+                <Button variant="secondary" onClick={handleDeny} className="flex-1 justify-center">
                   Deny
                 </Button>
                 <Button

@@ -45,30 +45,18 @@ function getSnapshot(): OAuthSessionState | null {
 function clearSession() {
   currentSession = null;
   clearLegacySessionStorage();
-  clearCSRFTokenStorage();
   emitChange();
 }
 
 function storeSession(session: OAuthSessionState) {
   currentSession = session;
   clearLegacySessionStorage();
-  storeCSRFToken(session.csrfToken);
   emitChange();
 }
 
 function clearLegacySessionStorage() {
   if (typeof localStorage === "undefined") return;
   localStorage.removeItem(LEGACY_STORAGE_KEY);
-}
-
-function storeCSRFToken(csrfToken: string) {
-  if (typeof localStorage === "undefined") return;
-  localStorage.setItem("csrf_token", csrfToken);
-}
-
-function clearCSRFTokenStorage() {
-  if (typeof localStorage === "undefined") return;
-  localStorage.removeItem("csrf_token");
 }
 
 function toSessionUser(user: OAuthUserResponse): SessionUser {
@@ -78,6 +66,10 @@ function toSessionUser(user: OAuthUserResponse): SessionUser {
     role: user.is_admin ? "admin" : "viewer",
     scopes: Array.isArray(user.scopes) ? user.scopes : [],
   };
+}
+
+export function getCurrentCSRFToken(): string {
+  return currentSession?.csrfToken ?? "";
 }
 
 export function createOAuthAuthStrategy(issuer: string | undefined): AuthStrategy {
