@@ -16,7 +16,8 @@ pnpm-debug.log*
 .env.*
 !.env.example
 
-# editor
+# editor / AI
+.claude/
 .vscode/*
 !.vscode/extensions.json
 .idea/
